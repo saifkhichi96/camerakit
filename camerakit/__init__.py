@@ -1,12 +1,12 @@
 from .calibration import run_calibration
-from .core import Camera, CameraInfo, MultiCameraManager
+from .core import CalibrationData, CalibrationFile, CameraInfo
 from .utils import SynchronizedVideoCapture, find_cameras, get_camera_properties
 
 
 __all__ = [
-    "Camera",
+    "CalibrationData",
     "CameraInfo",
-    "MultiCameraManager",
+    "CalibrationFile",
     "SynchronizedVideoCapture",
     "find_cameras",
     "get_camera_properties",
