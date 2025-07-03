@@ -1,18 +1,11 @@
 import argparse
-import logging
 import os
 import time
+from datetime import datetime
 
 import cv2
 
-from .utils import SynchronizedVideoCapture, find_cameras
-
-# Configure logging with timestamps and log level.
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
+from .utils import SynchronizedVideoCapture, find_cameras, setup_logging
 
 
 def parse_args():
@@ -31,13 +24,24 @@ def parse_args():
         default="mp4v",
         help="Optional: codec to use for recording video (default: mp4v).",
     )
+    parser.add_argument(
+        "--max-cameras",
+        type=int,
+        default=5,
+        help="Optional: maximum number of cameras to detect (default: 5). Only for Linux and Windows.",
+    )
+    parser.add_argument(
+        "--data-dir",
+        type=str,
+        default="data",
+        help="Optional: directory to save recorded videos (default: 'data').",
+    )
     return parser.parse_args()
 
 
 def list_resolutions_and_fps(camera_index, codec):
     cap = cv2.VideoCapture(camera_index)
     if not cap.isOpened():
-        logging.error(f"Failed to open camera {camera_index}.")
         return []
 
     # Define common resolutions.
@@ -47,10 +51,14 @@ def list_resolutions_and_fps(camera_index, codec):
         (1024, 768),  # XGA
         (1280, 720),  # HD
         (1920, 1080),  # Full HD
+        (2560, 1440),  # 2K
+        (3840, 2160),  # 4K
+        (4096, 2160),  # DCI 4K
+        (7680, 4320),  # 8K
     ]
 
+    print(f"Checking resolutions with mp4v codec for camera {camera_index}...")
     available_options = []
-    logging.info(f"Checking resolutions with mp4v codec for camera {camera_index}...")
     for width, height in resolutions:
         # Set resolution and mp4v codec.
         cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*codec))
@@ -64,23 +72,17 @@ def list_resolutions_and_fps(camera_index, codec):
 
         if actual_width == width and actual_height == height:
             available_options.append((width, height, fps))
-            logging.info(f"Resolution: {width}x{height} | FPS: {fps:.1f}")
+            print(f"Resolution: {width}x{height} | FPS: {fps:.1f}")
     cap.release()
     return available_options
 
 
-def select_resolution_and_fps(camera_index, codec):
-    print(f"Select resolution and FPS for camera {camera_index}:")
-    options = list_resolutions_and_fps(camera_index, codec)
-    if not options:
-        logging.error(f"No resolutions available for camera {camera_index}.")
-        return None, None, None
-
-    print("\nSelect an option by entering the index:")
+def select_resolution_and_fps(options):
+    print("\nSelected cameras support the following common resolutions/FPS:")
     for idx, (width, height, fps) in enumerate(options):
         print(f"{idx + 1}: {width}x{height} @ {fps:.1f} FPS")
 
-    selected_idx = int(input("Enter the index of the desired resolution: "))
+    selected_idx = int(input("Select a setting by number (1-{}): ".format(len(options))))
     if selected_idx < 1 or selected_idx > len(options):
         raise ValueError("Invalid selection, please try again.")
     selected_width, selected_height, selected_fps = options[selected_idx - 1]
@@ -94,18 +96,18 @@ def reencode_video(input_filename, output_filename, target_fps, width, height, c
     # Wait a short moment to ensure the file is flushed to disk.
     time.sleep(0.5)
 
-    logging.info(
+    print(
         f"Re-encoding video:\n  Input: {input_filename}\n  Output: {output_filename}\n  Target FPS: {target_fps:.2f}"
     )
     cap = cv2.VideoCapture(input_filename)
     if not cap.isOpened():
-        logging.error(f"Failed to open input file for re-encoding: {input_filename}")
+        print(f"Failed to open input file for re-encoding: {input_filename}")
         return False
 
     fourcc = cv2.VideoWriter_fourcc(*codec)
     out = cv2.VideoWriter(output_filename, fourcc, target_fps, (width, height))
     if not out.isOpened():
-        logging.error(f"Failed to open output file for re-encoding: {output_filename}")
+        print(f"Failed to open output file for re-encoding: {output_filename}")
         cap.release()
         return False
 
@@ -122,47 +124,79 @@ def reencode_video(input_filename, output_filename, target_fps, width, height, c
 def main():
     args = parse_args()
     codec = args.codec
+    data_dir = args.data_dir
+
+    # Create a directory for this session's recordings.
+    currentDateAndTime = datetime.now()
+    session_dir = f"{data_dir}/Session_{currentDateAndTime.strftime('%Y%m%dT%H%M%S')}"
+    os.makedirs(session_dir, exist_ok=True)
+
+    # Set up logging
+    logger = setup_logging(session_dir)
 
     # Discover available cameras.
-    logging.info("Looking for available cameras...")
-    cameras = find_cameras()
+    print(
+        "---------------------------------------------------------------------"
+    )
+    print("Discovering connected cameras...")
+    cameras = find_cameras(max_cameras=args.max_cameras)
     if not cameras:
-        logging.error("No cameras found. Exiting.")
+        print("No cameras found. Exiting.")
         return
 
     # Display available cameras.
-    logging.info("Available cameras:")
+    print("The following cameras were found:")
     for cam in cameras:
-        logging.info(f"  - {cam['id']}: {cam['name']}")
+        print(f"  - {cam['name']} (ID: {cam['id']})")
+        for i, (width, height, fps) in enumerate(cam["available_resolutions"]):
+            print(f"    {i+1}. {width}x{height} @ {fps:.1f} FPS")
+    print(
+        "---------------------------------------------------------------------\n"
+    )
 
     # Ask the user to select camera IDs to use.
-    print("Enter the IDs of the cameras you want to use, separated by commas:")
-    selected_ids = input("Camera IDs: ").strip()
+    selected_ids = input(
+        "Select the camera(s) to use for recording. For synchronized multi-camera\n" \
+        "capture, two or more cameras with matching resolutions and FPS are\n" \
+        "required. Enter comma-separated camera IDs (e.g., 0 or 0,1,2): "
+    ).strip()
     try:
         selected_ids = [int(cam_id.strip()) for cam_id in selected_ids.split(",")]
     except ValueError:
-        logging.error(
+        logger.error(
             "Invalid input. Please enter numeric camera IDs separated by commas."
         )
         return
     cameras = [cam for cam in cameras if cam["id"] in selected_ids]
     if not cameras:
-        logging.error("No valid cameras selected. Exiting.")
+        logger.error("No valid cameras selected. Exiting.")
         return
 
-    logging.info("Using selected cameras:")
+    print("Using selected cameras:")
     for cam in cameras:
-        logging.info(f"  - {cam['id']}: {cam['name']}")
-    cameras = [(cam["id"], cam["name"]) for cam in cameras]
+        print(f"  - {cam['id']}: {cam['name']}")
+    cameras = [(cam["id"], cam["name"], cam["available_resolutions"], cam["codec"]) for cam in cameras]
+
+    # Find common resolutions and FPS across selected cameras.
+    common_resolutions = set()
+    for _, _, options, _ in cameras:
+        if not common_resolutions:
+            common_resolutions = set(options)
+        else:
+            common_resolutions.intersection_update(set(options))
+    common_resolutions = list(common_resolutions)
+    
+    if not common_resolutions:
+        logger.error(
+            "No common resolutions and FPS found across selected cameras. "
+            "Please ensure all cameras support the same settings."
+        )
+        return
 
     # Ask the user to select resolution and FPS for each camera.
-    print(
-        "Listing supported resolutions and FPS for each camera. "
-        "Please select the same resolution and FPS for all cameras."
-    )
     selected_cams = []
-    for cam_id, cam_name in cameras:
-        width, height, fps = select_resolution_and_fps(cam_id, codec)
+    width, height, fps = select_resolution_and_fps(common_resolutions)
+    for cam_id, cam_name, _, _ in cameras:
         selected_cams.append(
             {
                 "id": cam_id,
@@ -177,20 +211,21 @@ def main():
     # Create the synchronized capture.
     sync = SynchronizedVideoCapture(selected_cams)
 
-    # Create a directory for this session's recordings.
-    session_save_dir = f"data/Session_{time.strftime('%Y-%m-%d_%H-%M-%S')}"
-    os.makedirs(session_save_dir, exist_ok=True)
-    logging.info(f"Saving recordings to directory: {session_save_dir}")
-
-    # Create the calibration directory.
-    calibration_dir = os.path.join(session_save_dir, "calibration")
-    os.makedirs(calibration_dir, exist_ok=True)
-
-    # Copy the config file.
-    default_config = "data/Session_Sample_1/Config.toml"
-    config_file = os.path.join(session_save_dir, "Config.toml")
-    os.system(f"cp {default_config} {config_file}")
-    logging.info(f"Copied default config file to: {config_file}")
+    logger.info(
+        "---------------------------------------------------------------------"
+    )
+    logger.info("Starting video capture session.")
+    logger.info(f"On {currentDateAndTime.strftime('%A %d. %B %Y, %H:%M:%S')}")
+    logger.info(f"Session directory: {session_dir}")
+    logger.info(
+        "Selected cameras: " + ", ".join(f"{cam['id']} ({cam['name']})" for cam in selected_cams)
+    )
+    logger.info(
+        f"Resolution: {width}x{height}, FPS: {fps:.1f}, Codec: {codec}"
+    )
+    logger.info(
+        "---------------------------------------------------------------------\n"
+    )
 
     # Recording state variables.
     recording = False
@@ -203,7 +238,7 @@ def main():
     last_display_time = time.time()
     display_fps = 0.0
 
-    logging.info("Press 'r' to start recording, 's' to stop & save, 'q' to quit.")
+    print("Press 'r' to start recording, 's' to stop & save, 'q' to quit.")
 
     try:
         while True:
@@ -262,28 +297,25 @@ def main():
                     cam_id = cam["id"]
                     width, height, fps = cam["width"], cam["height"], cam["fps"]
                     output_path = os.path.join(
-                        session_save_dir,
+                        session_dir,
                         f"Trial_{current_session}/{cam_id}_raw.mp4",
                     )
                     os.makedirs(os.path.dirname(output_path), exist_ok=True)
                     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
                     writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
                     if not writer.isOpened():
-                        logging.error(
-                            f"Failed to open video writer for camera {cam_id}."
-                        )
                         raise IOError(
                             f"Failed to open video writer for camera {cam_id}."
                         )
                     current_writers[cam_id] = writer
-                logging.info(f"Started recording session {current_session}.")
+                print(f"Started recording session {current_session}.")
             elif key == ord("s") and recording:
                 # Stop the current recording session.
                 recording = False
                 rec_end = time.time()
                 elapsed = rec_end - recording_start_time
                 avg_rec_fps = recording_frame_count / elapsed if elapsed > 0 else 0.0
-                logging.info(
+                print(
                     f"Stopped recording session {current_session}. Average recorded FPS: {avg_rec_fps:.2f}"
                 )
 
@@ -293,7 +325,7 @@ def main():
                     cam_id = cam["id"]
                     current_writers[cam_id].release()
                     raw_files[cam_id] = os.path.join(
-                        session_save_dir,
+                        session_dir,
                         f"Trial_{current_session}/{cam_id}_raw.mp4",
                     )
 
@@ -305,7 +337,7 @@ def main():
                 if args.required_fps is not None:
                     if abs(args.required_fps - avg_rec_fps) > 0.1:
                         target_fps = args.required_fps
-                        logging.info(
+                        print(
                             f"User-specified FPS {args.required_fps} differs from computed FPS {avg_rec_fps:.2f}. "
                             f"Re-encoding using {target_fps:.2f} FPS."
                         )
@@ -318,7 +350,7 @@ def main():
                     width, height = cam["width"], cam["height"]
                     raw_filename = raw_files[cam_id]
                     final_filename = os.path.join(
-                        session_save_dir, f"Trial_{current_session}/{cam_id}.mp4"
+                        session_dir, f"Trial_{current_session}/{cam_id}.mp4"
                     )
                     if abs(cam["fps"] - target_fps) > 0.1:
                         success = reencode_video(
@@ -331,27 +363,27 @@ def main():
                         )
                         if success:
                             os.remove(raw_filename)
-                            logging.info(
+                            print(
                                 f"Re-encoded video for camera {cam_id} to {target_fps:.2f} FPS."
                             )
                         else:
-                            logging.error(
+                            print(
                                 f"Re-encoding failed for camera {cam_id}. Keeping raw video."
                             )
                     else:
                         os.rename(raw_filename, final_filename)
-                        logging.info(
+                        print(
                             f"Video for camera {cam_id} kept at original FPS ({cam['fps']:.2f})."
                         )
             elif key == ord("q"):
                 break
 
     except Exception as e:
-        logging.error(f"An error occurred: {e}")
+        print(f"An error occurred: {e}")
     finally:
         cv2.destroyAllWindows()
         sync.release()
-        logging.info("Session ended.")
+        print("Session ended.")
 
 
 if __name__ == "__main__":

@@ -1,4 +1,6 @@
 import logging
+import logging.handlers
+import os
 import platform
 import re
 import subprocess
@@ -6,6 +8,72 @@ from typing import Dict, List, Optional
 
 import cv2
 from easydict import EasyDict as edict
+
+
+def setup_logging(session_dir: Optional[str] = None, level=logging.INFO):
+    """
+    Create logging file and stream handlers
+    """
+    handlers = [logging.StreamHandler()]
+    if session_dir:
+        os.makedirs(session_dir, exist_ok=True)
+        handlers.append(
+            logging.handlers.TimedRotatingFileHandler(
+                os.path.join(session_dir, "logs.txt"), when="D", interval=7
+            )
+        )
+
+    # Configure logging with timestamps and log level.
+    logger = logging.getLogger()
+    logger.setLevel(level)
+    logger.handlers = []  # Clear existing handlers to avoid duplicates
+    for handler in handlers:
+        handler.setLevel(level)
+        handler.setFormatter(
+            logging.Formatter(
+                "%(asctime)s [%(levelname)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
+            )
+        )
+        logger.addHandler(handler)
+
+    return logger
+
+
+def find_supported_resolutions_and_fps(camera_index, codec):
+    cap = cv2.VideoCapture(camera_index)
+    if not cap.isOpened():
+        logging.error(f"Failed to open camera {camera_index}.")
+        return []
+
+    # Define common resolutions.
+    resolutions = [
+        (320, 240),  # QVGA
+        (640, 480),  # VGA
+        (1024, 768),  # XGA
+        (1280, 720),  # HD
+        (1920, 1080),  # Full HD
+        (2560, 1440),  # 2K
+        (3840, 2160),  # 4K
+        (4096, 2160),  # DCI 4K
+        (7680, 4320),  # 8K
+    ]
+
+    available_options = []
+    for width, height in resolutions:
+        # Set resolution and mp4v codec.
+        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*codec))
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+
+        # Get actual resolution and FPS.
+        actual_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        actual_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        fps = cap.get(cv2.CAP_PROP_FPS)
+
+        if actual_width == width and actual_height == height:
+            available_options.append((width, height, fps))
+    cap.release()
+    return available_options
 
 
 def get_camera_hardware_linux(cam_id):
@@ -115,17 +183,10 @@ def get_camera_hardware_macos():
         cap = cv2.VideoCapture(index)
         if cap.isOpened():
             cam["id"] = index  # Assign OpenCV-compatible index
-            cam["resolution"] = (
-                int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
-                int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
-            )
-            cam["frame_rate"] = int(cap.get(cv2.CAP_PROP_FPS))
             cam["manufacturer"] = cam.get("manufacturer", "Unknown")
             cam["model_number"] = cam.get("model_number", f"CAM{index}")
             cam["serial_number"] = cam.get("serial_number", "")
-            cam["name"] = (
-                f"{cam['manufacturer']} {cam['model_number']} ({cam['resolution'][0]}x{cam['resolution'][1]} @ {cam['frame_rate']} FPS)"
-            )
+            cam["name"] = f"{cam['manufacturer']} {cam['model_number']}"
             mapped_cameras.append(edict(cam))
             index += 1
         cap.release()
@@ -167,7 +228,7 @@ def get_camera_hardware(cam_id: int) -> Optional[Dict[str, str]]:
         return default
 
 
-def get_camera_properties(camera_id):
+def get_camera_properties(camera_id, codec="mp4v") -> Optional[edict]:
     if isinstance(camera_id, int) or camera_id.isdigit():
         camera = cv2.VideoCapture(int(camera_id))
         if not camera.isOpened():
@@ -175,16 +236,19 @@ def get_camera_properties(camera_id):
 
         info = {
             "id": camera_id,
-            "resolution": (
-                int(camera.get(cv2.CAP_PROP_FRAME_WIDTH)),
-                int(camera.get(cv2.CAP_PROP_FRAME_HEIGHT)),
-            ),
-            "frame_rate": int(camera.get(cv2.CAP_PROP_FPS)),
             **get_camera_hardware(camera_id),
         }
 
-        name = f"{info['manufacturer']} {info['model_number']} ({info['resolution'][0]}x{info['resolution'][1]} @ {info['frame_rate']} FPS)"
+        name = f"{info['manufacturer']} {info['model_number']}"
         info["name"] = name
+
+        # Get supported settings.
+        resolutions = find_supported_resolutions_and_fps(camera_id, codec)
+        if not resolutions:
+            return None
+
+        info["available_resolutions"] = resolutions
+        info["codec"] = codec
 
         camera.release()
         return edict(info)
@@ -192,7 +256,7 @@ def get_camera_properties(camera_id):
     return None
 
 
-def find_cameras(max_cameras=5) -> List[Dict]:
+def find_cameras(max_cameras=5, codec="mp4v") -> List[Dict]:
     """Find available cameras.
 
     Args:
@@ -200,12 +264,22 @@ def find_cameras(max_cameras=5) -> List[Dict]:
     """
     system = platform.system()
 
-    if system == "Darwin":  # macOS
-        return get_camera_hardware_macos()
-
     info = []
-    for i in range(max_cameras):
-        camera = get_camera_properties(i)
-        if camera:
-            info.append(camera)
+    if system == "Darwin":  # macOS
+        info_darwin = get_camera_hardware_macos()
+        for cam in info_darwin:
+            resolutions = find_supported_resolutions_and_fps(cam["id"], codec)
+            if not resolutions:
+                continue
+
+            cam["available_resolutions"] = resolutions
+            cam["codec"] = codec
+            info.append(cam)
+
+    else:
+        for i in range(2 * max_cameras):  # 2x because OpenCV skips indices
+            camera = get_camera_properties(i)
+            if camera:
+                info.append(camera)
+
     return info
