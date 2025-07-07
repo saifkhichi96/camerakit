@@ -50,6 +50,18 @@ from .pose import (
 os.environ["OPENCV_LOG_LEVEL"] = "FATAL"
 
 
+def get_frame(img_or_video):
+    img = cv2.imread(img_or_video)
+    if img is None:
+        cap = cv2.VideoCapture(img_or_video)
+        ret, img = cap.read()
+        cap.release()
+        if not ret:
+            logging.error(f"Could not read image or video from {img_or_video}")
+            return None
+    return img
+
+
 ## FUNCTIONS
 def calib_calc_fun(calib_dir, intrinsics_config_dict, extrinsics_config_dict):
     """
@@ -371,12 +383,12 @@ def calibrate_extrinsics(calib_dir, extrinsics_config_dict, C, S, K, D):
             # Read images or video
             extrinsics_extension = [
                 extrinsics_config_dict.get("board").get("extrinsics_extension")
-                if extrinsics_method == "board"
+                if extrinsics_method in ["board", "board_outer"]
                 else extrinsics_config_dict.get("scene").get("extrinsics_extension")
             ][0]
             show_reprojection_error = [
                 extrinsics_config_dict.get("board").get("show_reprojection_error")
-                if extrinsics_method == "board"
+                if extrinsics_method in ["board", "board_outer"]
                 else extrinsics_config_dict.get("scene").get("show_reprojection_error")
             ][0]
             img_vid_files = glob.glob(
@@ -395,12 +407,12 @@ def calibrate_extrinsics(calib_dir, extrinsics_config_dict, C, S, K, D):
 
             if extrinsics_method != "keypoints":
                 # extract frames from image, or from video if imread is None
-                img = cv2.imread(img_vid_files[0])
+                img = get_frame(img_vid_files[0])
                 if img is None:
-                    cap = cv2.VideoCapture(img_vid_files[0])
-                    r, img = cap.read()
-                    if not r:
-                        raise
+                    raise ValueError(
+                        f"Could not read image or video from {img_vid_files[0]}"
+                    )
+
                 img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
                 # Find corners or label by hand
@@ -481,12 +493,11 @@ def calibrate_extrinsics(calib_dir, extrinsics_config_dict, C, S, K, D):
             # Check calibration results
             if show_reprojection_error:
                 # Reopen image, otherwise 2 sets of text are overlaid
-                img = cv2.imread(img_vid_files[0])
+                img = get_frame(img_vid_files[0])
                 if img is None:
-                    cap = cv2.VideoCapture(img_vid_files[0])
-                    r, img = cap.read()
-                    if not r:
-                        raise
+                    raise ValueError(
+                        f"Could not read image or video from {img_vid_files[0]}"
+                    )
                 img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
                 for o in proj_obj:
@@ -615,21 +626,17 @@ def findCorners(img_path, corner_nb, objp=[], show=True, outermost_only=False):
         0.001,
     )  # stop refining after 30 iterations or if error less than 0.001px
 
-    img = cv2.imread(img_path)
+    img = get_frame(img_path)
     if img is None:
-        cap = cv2.VideoCapture(img_path)
-        ret, img = cap.read()
-        cap.release()
-        if not ret:
-            logging.error(f"Could not read image or video from {img_path}")
-            return None
+        logging.error(f"Could not read image or video from {img_path}")
+        return None
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
     # Find corners
     ret, corners = cv2.findChessboardCorners(gray, corner_nb, None)
 
     # If corners are found, refine corners
-    if ret:
+    if ret == True:
         imgp = cv2.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria)
         logging.info(f"{os.path.basename(img_path)}: Corners found.")
 
@@ -716,7 +723,7 @@ def findCorners(img_path, corner_nb, objp=[], show=True, outermost_only=False):
                 img, imgp=[], objp=objp, img_path=img_path
             )
         else:
-            imgp_objp_confirmed = []
+            imgp_objp_confirmed = [], []
 
     return imgp_objp_confirmed
 
@@ -797,10 +804,10 @@ def imgp_objp_visualizer_clicker(img, imgp=[], objp=[], img_path=""):
         if event.key == "c":
             # TODO: RIGHT NOW, IF 'C' IS PRESSED ANOTHER TIME, OBJP_CONFIRMED AND IMGP_CONFIRMED ARE RESET TO []
             # We should reopen a figure without point on it
-            img_for_pointing = cv2.imread(old_image_path)
+            img_for_pointing = get_frame(old_image_path)
             if img_for_pointing is None:
-                cap = cv2.VideoCapture(old_image_path)
-                ret, img_for_pointing = cap.read()
+                logging.error(f"Could not read image or video from {old_image_path}")
+                return None
             img_for_pointing = cv2.cvtColor(img_for_pointing, cv2.COLOR_BGR2RGB)
             ax.imshow(img_for_pointing)
             # To update the image

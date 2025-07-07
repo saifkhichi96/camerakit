@@ -6,8 +6,6 @@ import re
 import cv2
 import numpy as np
 
-from posetrack import BodyWithFeet
-
 
 def read_extrinsics_cam_img(calib_dir, cam, extrinsics_extension):
     img_vid_files = glob.glob(
@@ -35,7 +33,10 @@ def read_extrinsics_cam_img(calib_dir, cam, extrinsics_extension):
 
 
 def find_keypoints(
-    config_dict, extrinsics_cam_listdirs_names, calib_dir, extrinsics_extension
+    config_dict, 
+    extrinsics_cam_listdirs_names, 
+    calib_dir, 
+    extrinsics_extension,
 ):
     """
     Estimates rough 3D object points from keypoints using measured pixel distances and a known participant height.
@@ -75,6 +76,7 @@ def find_keypoints(
     """
 
     logging.info("Loading 2D pose estimator for extrinsics...")
+    from posetrack import BodyWithFeet
     pose_estimator = BodyWithFeet(mode="performance")
 
     keypoints_list = []
@@ -149,10 +151,10 @@ def find_keypoints(
     avg_points = np.array(avg_points)  # shape: (6, 2)
 
     # Known participant height in meters (default to 1.75 m if not provided)
-    person_height = config_dict.get("process", {}).get("participant_height", 1.75)
+    person_height = config_dict.get("project", {}).get("participant_height", 1.75)
     if person_height is None:
         raise ValueError(
-            "Participant height (process.participant_height) not provided in config."
+            "Participant height (project.participant_height) not provided in config."
         )
     s = person_height / measured_height_px  # Scale factor in m/px
     logging.info(
