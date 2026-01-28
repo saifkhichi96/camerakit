@@ -27,6 +27,11 @@ camerakit devices --max-cameras 6
 ```
 
 ```bash
+# Initialize a calibration project
+camerakit init --path /path/to/project
+```
+
+```bash
 # Run calibration using Config.toml and a calibration folder
 camerakit calibrate --config /path/to/project
 ```

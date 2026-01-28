@@ -2,7 +2,16 @@ import argparse
 import sys
 
 from . import calibration, capture, devices, report
+from . import init as init_project
 from .version import __version__
+
+COMMANDS = {
+    "devices": ("List available cameras.", devices.main),
+    "init": ("Create a calibration project layout.", init_project.main),
+    "calibrate": ("Run calibration from a Config.toml.", calibration.main),
+    "capture": ("Record synchronized video.", capture.main),
+    "report": ("Summarize a calibration TOML.", report.main),
+}
 
 
 def _dispatch(module_main, passthrough_args):
@@ -14,33 +23,31 @@ def _dispatch(module_main, passthrough_args):
         sys.argv = original_argv
 
 
-def _add_passthrough(subparsers, name, help_text, module_main):
-    subparser = subparsers.add_parser(name, help=help_text, add_help=False)
-    subparser.add_argument("args", nargs=argparse.REMAINDER)
-    subparser.set_defaults(_func=lambda args: _dispatch(module_main, args.args))
+def _print_help():
+    print("CameraKit unified CLI. Use a subcommand to access a tool.\n")
+    print("Usage:")
+    print("  camerakit [-V|--version] <command> [args]\n")
+    print("Commands:")
+    for name, (help_text, _) in COMMANDS.items():
+        print(f"  {name:<10} {help_text}")
+    print("\nTip: Use 'camerakit <command> --help' for command-specific options.")
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="CameraKit unified CLI. Use a subcommand to access a tool.",
-    )
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("-h", "--help", action="store_true")
     parser.add_argument(
-        "-V",
-        "--version",
-        action="version",
-        version=f"camerakit {__version__}",
+        "-V", "--version", action="version", version=f"camerakit {__version__}"
     )
-    subparsers = parser.add_subparsers(dest="command", required=True)
+    parser.add_argument("command", nargs="?", choices=COMMANDS.keys())
 
-    _add_passthrough(subparsers, "devices", "List available cameras.", devices.main)
-    _add_passthrough(
-        subparsers, "calibrate", "Run calibration from a Config.toml.", calibration.main
-    )
-    _add_passthrough(subparsers, "capture", "Record synchronized video.", capture.main)
-    _add_passthrough(subparsers, "report", "Summarize a calibration TOML.", report.main)
+    args, remainder = parser.parse_known_args()
+    if args.help or not args.command:
+        _print_help()
+        return
 
-    args = parser.parse_args()
-    args._func(args)
+    _, module_main = COMMANDS[args.command]
+    _dispatch(module_main, remainder)
 
 
 if __name__ == "__main__":
