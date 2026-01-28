@@ -82,7 +82,9 @@ def select_resolution_and_fps(options):
     for idx, (width, height, fps) in enumerate(options):
         print(f"{idx + 1}: {width}x{height} @ {fps:.1f} FPS")
 
-    selected_idx = int(input("Select a setting by number (1-{}): ".format(len(options))))
+    selected_idx = int(
+        input("Select a setting by number (1-{}): ".format(len(options)))
+    )
     if selected_idx < 1 or selected_idx > len(options):
         raise ValueError("Invalid selection, please try again.")
     selected_width, selected_height, selected_fps = options[selected_idx - 1]
@@ -135,9 +137,7 @@ def main():
     logger = setup_logging(session_dir)
 
     # Discover available cameras.
-    print(
-        "---------------------------------------------------------------------"
-    )
+    print("---------------------------------------------------------------------")
     print("Discovering connected cameras...")
     cameras = find_cameras(max_cameras=args.max_cameras)
     if not cameras:
@@ -149,15 +149,13 @@ def main():
     for cam in cameras:
         print(f"  - {cam['name']} (ID: {cam['id']})")
         for i, (width, height, fps) in enumerate(cam["available_resolutions"]):
-            print(f"    {i+1}. {width}x{height} @ {fps:.1f} FPS")
-    print(
-        "---------------------------------------------------------------------\n"
-    )
+            print(f"    {i + 1}. {width}x{height} @ {fps:.1f} FPS")
+    print("---------------------------------------------------------------------\n")
 
     # Ask the user to select camera IDs to use.
     selected_ids = input(
-        "Select the camera(s) to use for recording. For synchronized multi-camera\n" \
-        "capture, two or more cameras with matching resolutions and FPS are\n" \
+        "Select the camera(s) to use for recording. For synchronized multi-camera\n"
+        "capture, two or more cameras with matching resolutions and FPS are\n"
         "required. Enter comma-separated camera IDs (e.g., 0 or 0,1,2): "
     ).strip()
     try:
@@ -175,7 +173,10 @@ def main():
     print("Using selected cameras:")
     for cam in cameras:
         print(f"  - {cam['id']}: {cam['name']}")
-    cameras = [(cam["id"], cam["name"], cam["available_resolutions"], cam["codec"]) for cam in cameras]
+    cameras = [
+        (cam["id"], cam["name"], cam["available_resolutions"], cam["codec"])
+        for cam in cameras
+    ]
 
     # Find common resolutions and FPS across selected cameras.
     common_resolutions = set()
@@ -185,7 +186,7 @@ def main():
         else:
             common_resolutions.intersection_update(set(options))
     common_resolutions = list(common_resolutions)
-    
+
     if not common_resolutions:
         logger.error(
             "No common resolutions and FPS found across selected cameras. "
@@ -211,18 +212,15 @@ def main():
     # Create the synchronized capture.
     sync = SynchronizedVideoCapture(selected_cams)
 
-    logger.info(
-        "---------------------------------------------------------------------"
-    )
+    logger.info("---------------------------------------------------------------------")
     logger.info("Starting video capture session.")
     logger.info(f"On {currentDateAndTime.strftime('%A %d. %B %Y, %H:%M:%S')}")
     logger.info(f"Session directory: {session_dir}")
     logger.info(
-        "Selected cameras: " + ", ".join(f"{cam['id']} ({cam['name']})" for cam in selected_cams)
+        "Selected cameras: "
+        + ", ".join(f"{cam['id']} ({cam['name']})" for cam in selected_cams)
     )
-    logger.info(
-        f"Resolution: {width}x{height}, FPS: {fps:.1f}, Codec: {codec}"
-    )
+    logger.info(f"Resolution: {width}x{height}, FPS: {fps:.1f}, Codec: {codec}")
     logger.info(
         "---------------------------------------------------------------------\n"
     )

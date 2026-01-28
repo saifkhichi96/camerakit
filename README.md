@@ -3,7 +3,9 @@
 CameraKit is a Python package that provides command-line tools and an API for camera calibration and synchronized capture. It has the following features:
 
 - Camera calibration using checkerboard images or video
-- Synchronized capture from multiple cameras
+- Synchronized capture from multiple cameras (software sync)
+
+Current release: **v2.0.0** (see RELEASE_NOTES.md)
 
 ## Installation
 
@@ -20,29 +22,58 @@ pip install camerakit
 You can use the command-line interface to perform camera calibration and capture images. Here are some examples:
 
 ```bash
-# Calibrate a camera using checkerboard images
-ck-calibrate --images path/to/checkerboard/images --output calibration.toml
+# List available cameras and supported resolutions
+camerakit devices --max-cameras 6
 ```
 
 ```bash
-# Capture images from multiple cameras
-ck-capture --cameras camera1,camera2 --output path/to/output
+# Run calibration using Config.toml and a calibration folder
+camerakit calibrate --config /path/to/project
+```
+
+Project layout example:
+
+```text
+project/
+  Config.toml
+  calibration/
+    intrinsics/
+      cam_00/ intrinsics.mp4
+    extrinsics/
+      cam_00/ extrinsics.png
+```
+
+```bash
+# Record synchronized video from multiple cameras
+camerakit capture --data-dir data --required-fps 60
+```
+
+```bash
+# Summarize calibration results
+camerakit report --input calibration/Calib_board_outer.toml
+```
+
+Calibration outputs include per-camera reprojection errors in the TOML:
+
+```
+[cam_00]
+intrinsics_error_px = 0.42
+extrinsics_error_px = 0.88
 ```
 
 ### Python API
 You can also use CameraKit as a Python library. Here is an example of how to use it:
 
 ```python
-from camerakit.calibration import calibrate_camera
-calibration_data = calibrate_camera(
-    images='path/to/checkerboard/images',
-    output='calibration.toml'
-)
-print(calibration_data)
+from camerakit.calibration import run_calibration
+run_calibration("/path/to/project")
 ```
 
 ## Contributing
-Contributions are welcome! If you find a bug or have a feature request, please open an issue on GitHub. You can also submit a pull request with your changes.
+Contributions are welcome! See CONTRIBUTING.md for architecture notes and the roadmap. If you find a bug or have a feature request, please open an issue on GitHub. You can also submit a pull request with your changes.
+
+## Release notes
+See RELEASE_NOTES.md for version history and breaking changes.
 
 ## License
 CameraKit is licensed under the MIT License. See the [LICENSE](LICENSE) file for more details.

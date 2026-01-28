@@ -22,10 +22,11 @@ class CalibrationData:
         dist (np.ndarray): Distortion coefficients (array of length 4 or 5).
         rvec (np.ndarray): Rotation vector (3x1).
         t (np.ndarray): Translation vector (3x1).
-        fisheye (bool): Flag indicating if fisheye distortion is used.
         K_optim (np.ndarray): Optimal new camera matrix for undistorting points (3x3).
         K_inv (np.ndarray): Inverse of the intrinsic camera matrix (3x3).
         R (np.ndarray): Rotation matrix obtained from the rotation vector (3x3).
+        intrinsics_error_px (float): Intrinsics reprojection error (px), if available.
+        extrinsics_error_px (float): Extrinsics reprojection error (px), if available.
     """
 
     def __init__(
@@ -45,7 +46,8 @@ class CalibrationData:
                 - "distortions": Distortion coefficients (array of length 4 or 5). Optional, defaults to [0, 0, 0, 0].
                 - "rotation": Rotation vector (3x1). Optional, defaults to [0, 0, 0].
                 - "translation": Translation vector (3x1). Optional, defaults to [0, 0, 0].
-                - "fisheye": Flag indicating if fisheye distortion is used. Optional, defaults to False.
+                - "intrinsics_error_px": Intrinsics reprojection error (px). Optional.
+                - "extrinsics_error_px": Extrinsics reprojection error (px). Optional.
             alpha (float): Free scaling parameter for the optimal new camera matrix. Optional, defaults to 1.0.
             undistort (bool): If True, computes the projection matrix using the optimal camera matrix for undistorting points. Optional, defaults to False.
         """
@@ -59,7 +61,8 @@ class CalibrationData:
         self.t = np.array(
             info.get("translation", self.DEFAULT_TRANSLATION), dtype=float
         )
-        self.fisheye = info.get("fisheye", False)
+        self.intrinsics_error_px = info.get("intrinsics_error_px")
+        self.extrinsics_error_px = info.get("extrinsics_error_px")
 
         # Compute the optimal new camera matrix for undistorting points
         # The free scaling parameter (alpha) is set to 1, which means the entire image is retained.

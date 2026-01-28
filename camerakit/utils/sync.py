@@ -1,9 +1,12 @@
-import logging
 import threading
 import time
 from typing import List, Tuple
 
 import cv2
+
+from .common import get_logger
+
+logger = get_logger()
 
 
 class SynchronizedVideoCapture:
@@ -56,7 +59,7 @@ class SynchronizedVideoCapture:
         while self.running:
             ret, frame = self.cameras[index].read()
             if not ret:
-                logging.warning(
+                logger.warning(
                     f"Camera {self.camera_ids[index]} failed to capture frame."
                 )
                 time.sleep(0.01)  # Avoid busy-waiting

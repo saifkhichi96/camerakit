@@ -113,7 +113,7 @@ def read_config_files(config):
 
 def run_calibration(config=None):
     """
-    Cameras calibration from checkerboards or from qualisys files.
+    Cameras calibration from checkerboards.
 
     config can be a dictionary,
     or a the directory path of a trial, participant, or session,

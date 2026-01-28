@@ -1,11 +1,13 @@
-import logging
 import os
 from typing import Dict, List, Optional
 
 import numpy as np
 import toml
 
+from ..utils.common import get_logger
 from .calibration_data import CalibrationData
+
+logger = get_logger()
 
 
 class CalibrationFile:
@@ -45,7 +47,7 @@ class CalibrationFile:
 
         metadata = calib.get("metadata", {})
         if not isinstance(metadata, dict):
-            logging.warning(
+            logger.warning(
                 "Metadata in calibration file is not a dictionary. Using empty metadata."
             )
             metadata = {}
@@ -62,7 +64,7 @@ class CalibrationFile:
         cameras = [CalibrationData(calib[cam]) for cam in cal_keys]
 
         if not cameras:
-            logging.warning(
+            logger.warning(
                 "No valid camera configurations found in the calibration file."
             )
 
@@ -221,6 +223,18 @@ class CalibrationFile:
         Returns:
             dict: Dictionary representation of the CalibrationFile.
         """
+        intr_errors = [
+            getattr(camera, "intrinsics_error_px", None) for camera in self.cameras
+        ]
+        extr_errors = [
+            getattr(camera, "extrinsics_error_px", None) for camera in self.cameras
+        ]
+        intr_errors = (
+            intr_errors if any(err is not None for err in intr_errors) else None
+        )
+        extr_errors = (
+            extr_errors if any(err is not None for err in extr_errors) else None
+        )
         return {
             "S": self.S,
             "K": self.K,
@@ -232,6 +246,8 @@ class CalibrationFile:
             "t": self.t,
             "P": self.P,
             "metadata": self.metadata,
+            "intrinsics_error_px": intr_errors,
+            "extrinsics_error_px": extr_errors,
         }
 
     def __repr__(self):

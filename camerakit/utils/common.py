@@ -9,6 +9,35 @@ from typing import Dict, List, Optional
 import cv2
 from easydict import EasyDict as edict
 
+LOGGER_NAME = "camerakit"
+
+
+def get_logger():
+    return logging.getLogger(LOGGER_NAME)
+
+
+def configure_opencv_logging(silent: bool = True):
+    """
+    Reduce or silence OpenCV's internal logging to avoid noisy stderr output.
+    """
+    os.environ.setdefault("OPENCV_LOG_LEVEL", "ERROR")
+    # OpenCV Python API varies across versions; try the available hooks.
+    try:
+        if hasattr(cv2, "utils") and hasattr(cv2.utils, "logging"):
+            if silent and hasattr(cv2.utils.logging, "LOG_LEVEL_SILENT"):
+                cv2.utils.logging.setLogLevel(cv2.utils.logging.LOG_LEVEL_SILENT)
+            elif hasattr(cv2.utils.logging, "LOG_LEVEL_ERROR"):
+                cv2.utils.logging.setLogLevel(cv2.utils.logging.LOG_LEVEL_ERROR)
+    except Exception:
+        pass
+    try:
+        if hasattr(cv2, "LOG_LEVEL_SILENT") and silent:
+            cv2.setLogLevel(cv2.LOG_LEVEL_SILENT)
+        elif hasattr(cv2, "LOG_LEVEL_ERROR"):
+            cv2.setLogLevel(cv2.LOG_LEVEL_ERROR)
+    except Exception:
+        pass
+
 
 def setup_logging(session_dir: Optional[str] = None, level=logging.INFO):
     """
@@ -24,9 +53,10 @@ def setup_logging(session_dir: Optional[str] = None, level=logging.INFO):
         )
 
     # Configure logging with timestamps and log level.
-    logger = logging.getLogger()
+    logger = get_logger()
     logger.setLevel(level)
     logger.handlers = []  # Clear existing handlers to avoid duplicates
+    logger.propagate = False
     for handler in handlers:
         handler.setLevel(level)
         handler.setFormatter(
@@ -42,7 +72,7 @@ def setup_logging(session_dir: Optional[str] = None, level=logging.INFO):
 def find_supported_resolutions_and_fps(camera_index, codec):
     cap = cv2.VideoCapture(camera_index)
     if not cap.isOpened():
-        logging.error(f"Failed to open camera {camera_index}.")
+        get_logger().error(f"Failed to open camera {camera_index}.")
         return []
 
     # Define common resolutions.
@@ -146,7 +176,7 @@ def get_camera_hardware_windows(cam_id):
         else:
             info["serial_number"] = ""
     else:
-        logging.error(f"No camera found with id {cam_id} on Windows.")
+        get_logger().error(f"No camera found with id {cam_id} on Windows.")
 
     return info
 
@@ -224,7 +254,7 @@ def get_camera_hardware(cam_id: int) -> Optional[Dict[str, str]]:
 
         raise Exception(f"Unsupported platform: {system}")
     except Exception as ex:
-        logging.error(f"Error retrieving camera hardware information: {ex}")
+        get_logger().error(f"Error retrieving camera hardware information: {ex}")
         return default
 
 

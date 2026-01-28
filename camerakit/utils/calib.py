@@ -1,8 +1,11 @@
-import logging
 import os
 
 import cv2
 import numpy as np
+
+from .common import get_logger
+
+logger = get_logger()
 
 
 def euclidean_distance(q1, q2):
@@ -55,7 +58,7 @@ def extract_frames(video_path, extract_every_N_sec=1, overwrite_extraction=False
         if cap.isOpened():
             fps = round(cap.get(cv2.CAP_PROP_FPS))
             frame_nb = 0
-            logging.info("Extracting frames...")
+            logger.info("Extracting frames...")
             while cap.isOpened():
                 r, frame = cap.read()
                 if r:
@@ -72,7 +75,17 @@ def extract_frames(video_path, extract_every_N_sec=1, overwrite_extraction=False
                     break
 
 
-def toml_write(calib_path, C, S, D, K, R, T, error=0.0):
+def toml_write(
+    calib_path,
+    C,
+    S,
+    D,
+    K,
+    R,
+    T,
+    intrinsics_error_px=None,
+    extrinsics_error_px=None,
+):
     """
     Writes calibration parameters to a .toml file
 
@@ -85,11 +98,20 @@ def toml_write(calib_path, C, S, D, K, R, T, error=0.0):
     - R: extrinsic rotation: list of arrays of floats (Rodrigues)
     - T: extrinsic translation: list of arrays of floats
 
+    Optional:
+    - intrinsics_error_px: list of per-camera intrinsic reprojection errors (px)
+    - extrinsics_error_px: list of per-camera extrinsic reprojection errors (px)
+
     OUTPUTS:
     - a .toml file cameras calibrations
     """
 
-    error = np.array(error).tolist()
+    intrinsics_error_px = (
+        None if intrinsics_error_px is None else np.array(intrinsics_error_px).tolist()
+    )
+    extrinsics_error_px = (
+        None if extrinsics_error_px is None else np.array(extrinsics_error_px).tolist()
+    )
 
     with open(os.path.join(calib_path), "w+") as cal_f:
         for c in range(len(C)):
@@ -100,7 +122,26 @@ def toml_write(calib_path, C, S, D, K, R, T, error=0.0):
             dist = f"distortions = [ {D[c][0]}, {D[c][1]}, {D[c][2]}, {D[c][3]}]\n"
             rot = f"rotation = [ {R[c][0]}, {R[c][1]}, {R[c][2]}]\n"
             tran = f"translation = [ {T[c][0]}, {T[c][1]}, {T[c][2]}]\n"
-            fish = "fisheye = false\n\n"
-            cal_f.write(cam + name + size + mat + dist + rot + tran + fish)
-        meta = f"[metadata]\nadjusted = false\nerror = {error}\n"
+            intr_error = None
+            if isinstance(intrinsics_error_px, list) and c < len(intrinsics_error_px):
+                intr_error = intrinsics_error_px[c]
+            extr_error = None
+            if isinstance(extrinsics_error_px, list) and c < len(extrinsics_error_px):
+                extr_error = extrinsics_error_px[c]
+
+            error_lines = ""
+            if intr_error is not None:
+                error_lines += f"intrinsics_error_px = {intr_error}\n"
+            if extr_error is not None:
+                error_lines += f"extrinsics_error_px = {extr_error}\n"
+
+            cal_f.write(
+                cam + name + size + mat + dist + rot + tran + error_lines + "\n"
+            )
+
+        meta = "[metadata]\nadjusted = false\n"
+        if intrinsics_error_px is not None:
+            meta += f"intrinsics_error_px = {intrinsics_error_px}\n"
+        if extrinsics_error_px is not None:
+            meta += f"extrinsics_error_px = {extrinsics_error_px}\n"
         cal_f.write(meta)
