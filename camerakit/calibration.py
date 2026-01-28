@@ -103,9 +103,10 @@ def read_config_files(config):
                     temp_dict.get("project").update(
                         {"project_dir": os.path.join(config_dir, os.path.relpath(root))}
                     )
-                    if os.path.basename(root) not in temp_dict.get("project").get(
-                        "exclude_from_batch"
-                    ):
+                    exclude = (
+                        temp_dict.get("project", {}).get("exclude_from_batch") or []
+                    )
+                    if os.path.basename(root) not in exclude:
                         config_dicts.append(temp_dict)
 
     return level, config_dicts

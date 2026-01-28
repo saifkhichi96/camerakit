@@ -8,7 +8,6 @@ logger = get_logger()
 
 DEFAULT_CONFIG = """[project]
 project_dir = "."
-exclude_from_batch = []
 
 [calibration]
 calibration_type = "calculate"
