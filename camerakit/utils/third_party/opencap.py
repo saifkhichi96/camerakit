@@ -49,10 +49,9 @@ def calib_opencap_fun(files_to_convert_paths, binning_factor=1) -> CalibrationPa
             )
             # world frame to camera frame
             R_c_90, T_c_90 = world_to_camera_persp(R_w_90, T_w_90)
-            # TODO: T_c_90 is never used; looks incosistent... confirm if this is expected!
-            # store in R and T
+            # Store a consistent extrinsic pair after frame conversion.
             R += [cv2.Rodrigues(R_c_90)[0].squeeze()]
-            T += [T_cam / 1000]
+            T += [T_c_90 / 1000]
 
     zero_errors = [0.0] * len(C)
     return CalibrationParams(

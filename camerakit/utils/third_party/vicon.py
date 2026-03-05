@@ -117,6 +117,7 @@ def read_vicon(vicon_path):
         for i, v in enumerate(root.findall("Camera"))
         if v.attrib.get("DEVICEID") == v_sorted
     ]
+    ret = [ret[c] for c in C_id_sorted]
     S = [S[c] for c in C_id_sorted]
     D = [D[c] for c in C_id_sorted]
     K = [K[c] for c in C_id_sorted]
