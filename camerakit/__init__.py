@@ -1,6 +1,6 @@
 from .calibration import run_calibration
 from .core import CalibrationData, CalibrationFile, CameraInfo
-from .utils import SynchronizedVideoCapture, find_cameras, get_camera_properties
+from .utils import SynchronizedVideoCapture, find_cameras
 from .version import __version__  # noqa: F401
 
 __all__ = [
@@ -9,6 +9,5 @@ __all__ = [
     "CalibrationFile",
     "SynchronizedVideoCapture",
     "find_cameras",
-    "get_camera_properties",
     "run_calibration",
 ]

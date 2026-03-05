@@ -5,7 +5,12 @@ from datetime import datetime
 
 import cv2
 
-from .utils import SynchronizedVideoCapture, find_cameras, setup_logging
+from .utils import (
+    CameraEnumerator,
+    CameraMetadata,
+    SynchronizedVideoCapture,
+    setup_logging,
+)
 
 
 def parse_args():
@@ -44,56 +49,61 @@ def parse_args():
     return parser.parse_args()
 
 
-def list_resolutions_and_fps(camera_index, codec):
-    cap = cv2.VideoCapture(camera_index)
-    if not cap.isOpened():
-        return []
-
-    # Define common resolutions.
-    resolutions = [
-        (320, 240),  # QVGA
-        (640, 480),  # VGA
-        (1024, 768),  # XGA
-        (1280, 720),  # HD
-        (1920, 1080),  # Full HD
-        (2560, 1440),  # 2K
-        (3840, 2160),  # 4K
-        (4096, 2160),  # DCI 4K
-        (7680, 4320),  # 8K
-    ]
-
-    print(f"Checking resolutions with mp4v codec for camera {camera_index}...")
-    available_options = []
-    for width, height in resolutions:
-        # Set resolution and mp4v codec.
-        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*codec))
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
-
-        # Get actual resolution and FPS.
-        actual_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        actual_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        fps = cap.get(cv2.CAP_PROP_FPS)
-
-        if actual_width == width and actual_height == height:
-            available_options.append((width, height, fps))
-            print(f"Resolution: {width}x{height} | FPS: {fps:.1f}")
-    cap.release()
-    return available_options
-
-
 def select_resolution_and_fps(options):
+    """Prompt the user to pick a capture setting.
+
+    Args:
+        options: List of selectable capture settings.
+
+    Returns:
+        CaptureSettings: Selected setting object.
+
+    Raises:
+        ValueError: If the selected index is out of range.
+    """
     print("\nSelected cameras support the following common resolutions/FPS:")
-    for idx, (width, height, fps) in enumerate(options):
-        print(f"{idx + 1}: {width}x{height} @ {fps:.1f} FPS")
+    for idx, settings in enumerate(options):
+        print(f"{idx + 1}: {settings}")
 
     selected_idx = int(
         input("Select a setting by number (1-{}): ".format(len(options)))
     )
     if selected_idx < 1 or selected_idx > len(options):
         raise ValueError("Invalid selection, please try again.")
-    selected_width, selected_height, selected_fps = options[selected_idx - 1]
-    return selected_width, selected_height, selected_fps
+    return options[selected_idx - 1]
+
+
+def _setting_key(setting):
+    """Build a normalized comparison key for capture settings."""
+    return (
+        setting.width,
+        setting.height,
+        round(setting.fps, 3),
+        setting.codec.upper(),
+    )
+
+
+def _common_settings(cameras):
+    """Compute settings common to all selected cameras."""
+    if not cameras:
+        return []
+
+    setting_sets = [
+        {_setting_key(setting) for setting in cam.settings} for cam in cameras
+    ]
+    common = set.intersection(*setting_sets) if setting_sets else set()
+    if not common:
+        return []
+
+    # Preserve ordering from the first selected camera.
+    result = []
+    seen = set()
+    for setting in cameras[0].settings:
+        key = _setting_key(setting)
+        if key in common and key not in seen:
+            result.append(setting)
+            seen.add(key)
+    return result
 
 
 def reencode_video(input_filename, output_filename, target_fps, width, height, codec):
@@ -155,7 +165,7 @@ def main():
     # Discover available cameras.
     print("---------------------------------------------------------------------")
     print("Discovering connected cameras...")
-    cameras = find_cameras(max_cameras=args.max_cameras)
+    cameras = CameraEnumerator(max_cameras=args.max_cameras).list_synchronizable()
     if not cameras:
         print("No cameras found. Exiting.")
         return
@@ -163,9 +173,7 @@ def main():
     # Display available cameras.
     print("The following cameras were found:")
     for cam in cameras:
-        print(f"  - {cam['name']} (ID: {cam['id']})")
-        for i, (width, height, fps) in enumerate(cam["available_resolutions"]):
-            print(f"    {i + 1}. {width}x{height} @ {fps:.1f} FPS")
+        print(f"  - {cam.name} (ID: {cam.id})")
     print("---------------------------------------------------------------------\n")
 
     # Ask the user to select camera IDs to use.
@@ -181,29 +189,19 @@ def main():
             "Invalid input. Please enter numeric camera IDs separated by commas."
         )
         return
-    cameras = [cam for cam in cameras if cam["id"] in selected_ids]
+    cameras = [cam for cam in cameras if cam.id in selected_ids]
     if not cameras:
-        logger.error("No valid cameras selected. Exiting.")
+        logger.error("No valid camera IDs were selected.")
         return
+
+    common_settings = _common_settings(cameras)
 
     print("Using selected cameras:")
     for cam in cameras:
-        print(f"  - {cam['id']}: {cam['name']}")
-    cameras = [
-        (cam["id"], cam["name"], cam["available_resolutions"], cam["codec"])
-        for cam in cameras
-    ]
+        print(f"  - {cam.id}: {cam.name}")
+    cameras = [(cam.id, cam.name, cam.settings) for cam in cameras]
 
-    # Find common resolutions and FPS across selected cameras.
-    common_resolutions = set()
-    for _, _, options, _ in cameras:
-        if not common_resolutions:
-            common_resolutions = set(options)
-        else:
-            common_resolutions.intersection_update(set(options))
-    common_resolutions = list(common_resolutions)
-
-    if not common_resolutions:
+    if not common_settings:
         logger.error(
             "No common resolutions and FPS found across selected cameras. "
             "Please ensure all cameras support the same settings."
@@ -212,18 +210,12 @@ def main():
 
     # Ask the user to select resolution and FPS for each camera.
     selected_cams = []
-    width, height, fps = select_resolution_and_fps(common_resolutions)
-    for cam_id, cam_name, _, _ in cameras:
+    selected_setting = select_resolution_and_fps(common_settings)
+    for cam_id, cam_name, _ in cameras:
         selected_cams.append(
-            {
-                "id": cam_id,
-                "name": cam_name,
-                "width": width,
-                "height": height,
-                "fps": fps,
-            }
+            CameraMetadata(id=cam_id, name=cam_name, settings=[selected_setting])
         )
-    cam_ids = [cam["id"] for cam in selected_cams]
+    cam_ids = [cam.id for cam in selected_cams]
 
     # Create the synchronized capture.
     sync = SynchronizedVideoCapture(selected_cams)
@@ -234,9 +226,11 @@ def main():
     logger.info(f"Session directory: {session_dir}")
     logger.info(
         "Selected cameras: "
-        + ", ".join(f"{cam['id']} ({cam['name']})" for cam in selected_cams)
+        + ", ".join(f"{cam.id} ({cam.name})" for cam in selected_cams)
     )
-    logger.info(f"Resolution: {width}x{height}, FPS: {fps:.1f}, Codec: {codec}")
+    logger.info(
+        f"Resolution: {selected_setting.width}x{selected_setting.height}, FPS: {selected_setting.fps:.1f}, Codec: {selected_setting.codec}"
+    )
     logger.info(
         "---------------------------------------------------------------------\n"
     )
@@ -308,14 +302,20 @@ def main():
                 recording_frame_count = 0
                 current_writers = {}
                 for cam in selected_cams:
-                    cam_id = cam["id"]
-                    width, height, fps = cam["width"], cam["height"], cam["fps"]
+                    cam_id = cam.id
+                    cam_settings = cam.settings[
+                        0
+                    ]  # Assuming single setting per camera.
+                    width = cam_settings.width
+                    height = cam_settings.height
+                    fps = cam_settings.fps
+                    codec = cam_settings.codec
                     output_path = os.path.join(
                         session_dir,
                         f"Trial_{current_session}/{cam_id}_raw.mp4",
                     )
                     os.makedirs(os.path.dirname(output_path), exist_ok=True)
-                    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+                    fourcc = cv2.VideoWriter_fourcc(*codec)
                     writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
                     if not writer.isOpened():
                         raise IOError(
@@ -336,7 +336,7 @@ def main():
                 # Release all video writers and keep track of the raw filenames.
                 raw_files = {}
                 for cam in selected_cams:
-                    cam_id = cam["id"]
+                    cam_id = cam.id
                     current_writers[cam_id].release()
                     raw_files[cam_id] = os.path.join(
                         session_dir,
@@ -360,13 +360,13 @@ def main():
 
                 # For each camera, re-encode if the originally set FPS differs from target FPS.
                 for cam in selected_cams:
-                    cam_id = cam["id"]
-                    width, height = cam["width"], cam["height"]
+                    cam_id = cam.id
+                    width, height = cam.settings[0].width, cam.settings[0].height
                     raw_filename = raw_files[cam_id]
                     final_filename = os.path.join(
                         session_dir, f"Trial_{current_session}/{cam_id}.mp4"
                     )
-                    if abs(cam["fps"] - target_fps) > 0.1:
+                    if abs(cam.settings[0].fps - target_fps) > 0.1:
                         success = reencode_video(
                             raw_filename,
                             final_filename,

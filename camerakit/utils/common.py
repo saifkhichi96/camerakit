@@ -4,7 +4,8 @@ import os
 import platform
 import re
 import subprocess
-from typing import Dict, List, Optional
+import sys
+from typing import Dict, Optional
 
 import cv2
 from easydict import EasyDict as edict
@@ -82,41 +83,92 @@ def setup_logging(session_dir: Optional[str] = None, level=logging.INFO):
     return logger
 
 
-def find_supported_resolutions_and_fps(camera_index, codec):
-    cap = cv2.VideoCapture(camera_index)
+class suppress_stderr:
+    """Context manager that temporarily redirects stderr to `/dev/null`."""
+
+    def __enter__(self):
+        """Enter context and suppress stderr output.
+
+        Returns:
+            suppress_stderr: This context manager instance.
+        """
+        self._stderr = sys.stderr
+        sys.stderr = open(os.devnull, "w")
+        return self
+
+    def __exit__(self, *args):
+        """Restore stderr stream on context exit.
+
+        Args:
+            *args: Standard context manager exception arguments.
+        """
+        sys.stderr.close()
+        sys.stderr = self._stderr
+
+
+def find_supported_resolutions_and_fps(
+    cap,
+    codecs=("MJPG", "YUYV", "H264"),
+    aspect_ratios=None,
+    common_widths=None,
+):
+    """Probe supported camera settings for common resolutions.
+
+    Args:
+        cap: OpenCV `VideoCapture` instance.
+        codecs: Candidate codec FourCC strings to probe.
+        aspect_ratios: Aspect ratios to probe as `(w, h)` tuples.
+        common_widths: Candidate frame widths to probe.
+
+    Returns:
+        list[tuple[int, int, float, str]]: Supported `(width, height, fps, codec)` tuples.
+    """
     if not cap.isOpened():
-        get_logger().error(f"Failed to open camera {camera_index}.")
         return []
 
-    # Define common resolutions.
-    resolutions = [
-        (320, 240),  # QVGA
-        (640, 480),  # VGA
-        (1024, 768),  # XGA
-        (1280, 720),  # HD
-        (1920, 1080),  # Full HD
-        (2560, 1440),  # 2K
-        (3840, 2160),  # 4K
-        (4096, 2160),  # DCI 4K
-        (7680, 4320),  # 8K
-    ]
+    # Typical resolutions.
+    if aspect_ratios is None:
+        aspect_ratios = [
+            (3, 2),  # 3:2 aspect ratio
+            (4, 3),  # 4:3 aspect ratio
+            (16, 9),  # 16:9 aspect ratio
+        ]
+    if common_widths is None:
+        common_widths = [
+            640,  # VGA
+            800,  # SVGA
+            960,  # XGA
+            1024,  # XGA (1024x768, 1024x576)
+            1280,  # HD 720p
+            1600,  # UXGA
+            1920,  # Full HD 1080p
+            # 2560,  # 2K QHD
+            # 3840,  # 4K UHD
+            # 4096,  # 4K DCI
+        ]
+    resolutions = set()
+    for width in common_widths:
+        for ratio in aspect_ratios:
+            height = round(width * ratio[1] / ratio[0])
+            resolutions.add((width, height))
+    resolutions = sorted(resolutions)
 
-    available_options = []
+    available = []
     for width, height in resolutions:
-        # Set resolution and mp4v codec.
-        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*codec))
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+        for codec in codecs:
+            fourcc = cv2.VideoWriter_fourcc(*codec)
+            cap.set(cv2.CAP_PROP_FOURCC, fourcc)
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
 
-        # Get actual resolution and FPS.
-        actual_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        actual_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        fps = cap.get(cv2.CAP_PROP_FPS)
+            actual_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            actual_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            fps = cap.get(cv2.CAP_PROP_FPS)
 
-        if actual_width == width and actual_height == height:
-            available_options.append((width, height, fps))
-    cap.release()
-    return available_options
+            if actual_width == width and actual_height == height and fps > 0:
+                available.append((width, height, fps, codec))
+                break  # One working codec is enough
+    return available
 
 
 def get_camera_hardware_linux(cam_id):
@@ -287,10 +339,28 @@ def get_camera_hardware(cam_id: int) -> Optional[Dict[str, str]]:
         return default
 
 
-def get_camera_properties(camera_id, codec="mp4v") -> Optional[edict]:
+def get_camera_properties(
+    camera_id,
+    aspect_ratios=None,
+    common_widths=None,
+    codecs=("MJPG", "YUYV", "H264"),
+) -> Optional[edict]:
+    """Open a camera and collect metadata plus supported capture settings.
+
+    Args:
+        camera_id: Camera index, as integer or digit-like string.
+        aspect_ratios: Aspect ratios to probe as `(w, h)` tuples.
+        common_widths: Candidate frame widths to probe.
+        codecs: Candidate codec FourCC strings to probe.
+
+    Returns:
+        easydict.EasyDict | None: Camera properties if the device is usable,
+        otherwise `None`.
+    """
     if isinstance(camera_id, int) or camera_id.isdigit():
         camera = cv2.VideoCapture(int(camera_id))
         if not camera.isOpened():
+            get_logger().debug(f"Failed to open camera {camera_id}.")
             return None
 
         info = {
@@ -302,43 +372,22 @@ def get_camera_properties(camera_id, codec="mp4v") -> Optional[edict]:
         info["name"] = name
 
         # Get supported settings.
-        resolutions = find_supported_resolutions_and_fps(camera_id, codec)
-        if not resolutions:
+        settings = find_supported_resolutions_and_fps(
+            camera,
+            codecs=codecs,
+            aspect_ratios=aspect_ratios,
+            common_widths=common_widths,
+        )
+        if not settings:
+            get_logger().debug(
+                f"No supported resolutions found for camera {camera_id}."
+            )
+            camera.release()
             return None
 
-        info["available_resolutions"] = resolutions
-        info["codec"] = codec
+        info["settings"] = settings
 
         camera.release()
         return edict(info)
 
     return None
-
-
-def find_cameras(max_cameras=5, codec="mp4v") -> List[Dict]:
-    """Find available cameras.
-
-    Args:
-        max_cameras (int): Maximum number of cameras to search for.
-    """
-    system = platform.system()
-
-    info = []
-    if system == "Darwin":  # macOS
-        info_darwin = get_camera_hardware_macos()
-        for cam in info_darwin:
-            resolutions = find_supported_resolutions_and_fps(cam["id"], codec)
-            if not resolutions:
-                continue
-
-            cam["available_resolutions"] = resolutions
-            cam["codec"] = codec
-            info.append(cam)
-
-    else:
-        for i in range(2 * max_cameras):  # 2x because OpenCV skips indices
-            camera = get_camera_properties(i)
-            if camera:
-                info.append(camera)
-
-    return info

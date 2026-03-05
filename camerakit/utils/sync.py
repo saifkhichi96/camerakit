@@ -5,6 +5,7 @@ from typing import List, Tuple
 import cv2
 
 from .common import get_logger
+from .enumerator import CameraMetadata
 
 logger = get_logger()
 
@@ -14,14 +15,14 @@ class SynchronizedVideoCapture:
     Captures frames from multiple cameras and provides synchronized frame reading.
     """
 
-    def __init__(self, cameras: List[dict]):
+    def __init__(self, cameras: List[CameraMetadata]):
         """
         Initialize the camera streams and synchronization setup.
 
         Args:
-            camera_ids (List[int]): List of camera IDs.
+            cameras (List[CameraMetadata]): Camera metadata and selected settings.
         """
-        camera_ids = [camera["id"] for camera in cameras]
+        camera_ids = [camera.id for camera in cameras]
         self.camera_ids = camera_ids
         self.cameras = [cv2.VideoCapture(cam_id) for cam_id in camera_ids]
 
@@ -31,9 +32,9 @@ class SynchronizedVideoCapture:
                 raise ValueError(f"Failed to open camera {camera_ids[idx]}")
 
             # Set camera resolutions
-            cam.set(cv2.CAP_PROP_FRAME_WIDTH, cameras[idx]["width"])
-            cam.set(cv2.CAP_PROP_FRAME_HEIGHT, cameras[idx]["height"])
-            cam.set(cv2.CAP_PROP_FPS, cameras[idx]["fps"])
+            cam.set(cv2.CAP_PROP_FRAME_WIDTH, cameras[idx].width)
+            cam.set(cv2.CAP_PROP_FRAME_HEIGHT, cameras[idx].height)
+            cam.set(cv2.CAP_PROP_FPS, cameras[idx].fps)
 
         # Synchronization setup
         self.lock = threading.Lock()
