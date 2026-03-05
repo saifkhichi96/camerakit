@@ -33,13 +33,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 import toml
 from mpl_interactions import panhandler, zoom_factory
+from PIL import Image
 
 from .calib import (
     euclidean_distance,
     extract_frames,
     toml_write,
 )
-from .common import get_logger
+from .common import CalibrationParams, get_logger
 from .pose import (
     find_outer_corners,
 )
@@ -70,7 +71,9 @@ def get_frame(img_or_video):
 
 
 ## FUNCTIONS
-def calib_calc_fun(calib_dir, intrinsics_config_dict, extrinsics_config_dict):
+def calib_calc_fun(
+    calib_dir, intrinsics_config_dict, extrinsics_config_dict
+) -> CalibrationParams:
     """Compute calibration from checkerboard data or existing calibration file.
 
     Args:
@@ -79,8 +82,7 @@ def calib_calc_fun(calib_dir, intrinsics_config_dict, extrinsics_config_dict):
         extrinsics_config_dict: Extrinsics calibration configuration dictionary.
 
     Returns:
-        tuple[list, list, list, list, list, list, list]: Residuals, camera names,
-        image sizes, distortions, intrinsics, Rodrigues rotations, and translations.
+        CalibrationParams: Intrinsics/extrinsics residuals and calibration arrays.
     """
 
     overwrite_intrinsics = intrinsics_config_dict.get("overwrite_intrinsics")
@@ -98,30 +100,15 @@ def calib_calc_fun(calib_dir, intrinsics_config_dict, extrinsics_config_dict):
         calib_data = toml.load(calib_file)
 
         ret_intrinsics, C, S, D, K, R, T = [], [], [], [], [], [], []
-        meta_intr = calib_data.get("metadata", {}).get("intrinsics_error_px")
-        if meta_intr is None:
-            meta_intr = calib_data.get("metadata", {}).get("error")
-        cam_index = 0
         for cam in calib_data:
             if cam != "metadata":
-                cam_block = calib_data[cam]
-                intr_err = cam_block.get("intrinsics_error_px")
-                if (
-                    intr_err is None
-                    and isinstance(meta_intr, list)
-                    and cam_index < len(meta_intr)
-                ):
-                    intr_err = meta_intr[cam_index]
-                if intr_err is None:
-                    intr_err = 0.0
-                ret_intrinsics += [intr_err]
-                C += [cam_block["name"]]
-                S += [cam_block["size"]]
-                K += [np.array(cam_block["matrix"])]
-                D += [cam_block["distortions"]]
+                ret_intrinsics += [0.0]
+                C += [calib_data[cam]["name"]]
+                S += [calib_data[cam]["size"]]
+                K += [np.array(calib_data[cam]["matrix"])]
+                D += [calib_data[cam]["distortions"]]
                 R += [[0.0, 0.0, 0.0]]
                 T += [[0.0, 0.0, 0.0]]
-                cam_index += 1
         nb_cams_intrinsics = len(C)
 
     # calculate intrinsics otherwise
@@ -133,7 +120,6 @@ def calib_calc_fun(calib_dir, intrinsics_config_dict, extrinsics_config_dict):
         nb_cams_intrinsics = len(C)
 
     # calculate extrinsics
-    ret_extrinsics = None
     if calculate_extrinsics:
         logger.info("\nCalculating extrinsic parameters...")
 
@@ -154,8 +140,18 @@ def calib_calc_fun(calib_dir, intrinsics_config_dict, extrinsics_config_dict):
         logger.info(
             '\nExtrinsic parameters won\'t be calculated. Set "calculate_extrinsics" to true in Config.toml to calculate them.'
         )
+        ret_extrinsics = [0.0] * nb_cams_intrinsics
 
-    return ret_intrinsics, ret_extrinsics, C, S, D, K, R, T
+    return CalibrationParams(
+        ret_intrinsics=ret_intrinsics,
+        ret_extrinsics=ret_extrinsics,
+        C=C,
+        S=S,
+        D=D,
+        K=K,
+        R=R,
+        T=T,
+    )
 
 
 def calibrate_intrinsics(calib_dir, intrinsics_config_dict):
@@ -222,7 +218,7 @@ def calibrate_intrinsics(calib_dir, intrinsics_config_dict):
         try:
             cap = cv2.VideoCapture(img_vid_files[0])
             cap.read()
-            if not cap.read()[0]:
+            if cap.read()[0] == False:
                 raise
             extract_frames(img_vid_files[0], extract_every_N_sec, overwrite_extraction)
             img_vid_files = glob.glob(
@@ -231,12 +227,12 @@ def calibrate_intrinsics(calib_dir, intrinsics_config_dict):
             img_vid_files = sorted(
                 img_vid_files, key=lambda c: [int(n) for n in re.findall(r"\d+", c)]
             )
-        except Exception:
+        except:
             pass
 
         # find corners
         for img_path in img_vid_files:
-            if show_detection_intrinsics:
+            if show_detection_intrinsics == True:
                 imgp_confirmed, objp_confirmed = findCorners(
                     img_path,
                     intrinsics_corners_nb,
@@ -269,6 +265,12 @@ def calibrate_intrinsics(calib_dir, intrinsics_config_dict):
             )
 
         # calculate intrinsics
+        if len(imgpoints) == 0 or len(objpoints) == 0:
+            raise ValueError(
+                f"No valid checkerboard detections found for camera {cam}. "
+                "Enable 'show_detection_intrinsics' and verify board visibility."
+            )
+
         img = cv2.imread(str(img_path))
         objpoints = np.array(objpoints)
 
@@ -336,13 +338,11 @@ def calibrate_extrinsics(calib_dir, extrinsics_config_dict, C, S, K, D):
             extrinsics_square_size = (
                 extrinsics_config_dict.get("board").get("extrinsics_square_size") / 1000
             )  # convert to meters
+
+            h, w = extrinsics_corners_nb
             if extrinsics_method == "board":
-                object_coords_3d = np.zeros(
-                    (extrinsics_corners_nb[0] * extrinsics_corners_nb[1], 3), np.float32
-                )
-                object_coords_3d[:, :2] = np.mgrid[
-                    0 : extrinsics_corners_nb[0], 0 : extrinsics_corners_nb[1]
-                ].T.reshape(-1, 2)
+                object_coords_3d = np.zeros((h * w, 3), np.float32)
+                object_coords_3d[:, :2] = np.mgrid[0:h, 0:w].T.reshape(-1, 2)
                 object_coords_3d[:, :2] = (
                     object_coords_3d[:, 0:2] * extrinsics_square_size
                 )
@@ -350,11 +350,11 @@ def calibrate_extrinsics(calib_dir, extrinsics_config_dict, C, S, K, D):
                 object_coords_3d = np.array(
                     [
                         [0, 0, 0],
-                        [(extrinsics_corners_nb[0]) * extrinsics_square_size, 0, 0],
-                        [0, (extrinsics_corners_nb[1]) * extrinsics_square_size, 0],
+                        [w * extrinsics_square_size, 0, 0],
+                        [0, h * extrinsics_square_size, 0],
                         [
-                            (extrinsics_corners_nb[0]) * extrinsics_square_size,
-                            (extrinsics_corners_nb[1]) * extrinsics_square_size,
+                            w * extrinsics_square_size,
+                            h * extrinsics_square_size,
                             0,
                         ],
                     ],
@@ -420,10 +420,21 @@ def calibrate_extrinsics(calib_dir, extrinsics_config_dict, C, S, K, D):
                     )
 
             elif extrinsics_method == "scene":
-                imgp, objp = imgp_objp_visualizer_clicker(
+                clicked_points = imgp_objp_visualizer_clicker(
                     img, imgp=[], objp=object_coords_3d, img_path=img_vid_files[0]
                 )
-                if len(imgp) == 0:
+                if (
+                    not isinstance(clicked_points, (list, tuple))
+                    or len(clicked_points) != 2
+                ):
+                    logger.exception(
+                        "No points clicked (or fewer than 6). Press 'C' when the image is displayed, and then click on the image points corresponding to the 'object_coords_3d' you measured and wrote down in the Config.toml file."
+                    )
+                    raise ValueError(
+                        "No points clicked (or fewer than 6). Press 'C' when the image is displayed, and then click on the image points corresponding to the 'object_coords_3d' you measured and wrote down in the Config.toml file."
+                    )
+                imgp, objp = clicked_points
+                if imgp is None or len(imgp) == 0:
                     logger.exception(
                         "No points clicked (or fewer than 6). Press 'C' when the image is displayed, and then click on the image points corresponding to the 'object_coords_3d' you measured and wrote down in the Config.toml file."
                     )
@@ -541,11 +552,8 @@ def calibrate_extrinsics(calib_dir, extrinsics_config_dict, C, S, K, D):
                     2,
                     lineType=cv2.LINE_AA,
                 )
-                plt.figure()
-                plt.imshow(img)
-                plt.title(os.path.basename(img_vid_files[0]))
-                plt.axis("off")
-                plt.show()
+                im_pil = Image.fromarray(img)
+                im_pil.show(title=os.path.basename(img_vid_files[0]))
 
             # Calculate reprojection error
             imgp_to_objreproj_dist = [
@@ -691,7 +699,7 @@ def findCorners(img_path, corner_nb, objp=[], show=True, outermost_only=False):
                 img, imgp=[], objp=objp, img_path=img_path
             )
         else:
-            imgp_objp_confirmed = [], []
+            imgp_objp_confirmed = []
 
     return imgp_objp_confirmed
 
@@ -1157,30 +1165,88 @@ def imgp_objp_visualizer_clicker(img, imgp=[], objp=[], img_path=""):
 
     if "imgp_confirmed" in globals() and "objp_confirmed" in globals():
         return imgp_confirmed, objp_confirmed
-    if "imgp_confirmed" in globals() and "objp_confirmed" not in globals():
+    if "imgp_confirmed" in globals() and not "objp_confirmed" in globals():
         return imgp_confirmed
     return None
 
 
-def recap_calibrate(ret_intrinsics, ret_extrinsics, calib_path):
+def _normalize_error_list(errors, size):
+    """Normalize error lists to fixed-size finite float lists."""
+
+    normalized = [0.0] * size
+    if errors is None:
+        return normalized
+
+    for i, value in enumerate(errors[:size]):
+        with contextlib.suppress(Exception):
+            value = float(value)
+            if np.isfinite(value):
+                normalized[i] = value
+    return normalized
+
+
+def recap_calibrate(params: CalibrationParams, calib_full_type) -> CalibrationParams:
+    """Summarize calibration errors in pixel and millimeter units.
+
+    Args:
+        params: Calibration outputs to summarize and normalize.
+        calib_full_type: Calibration mode used to derive residual interpretation.
+
+    Returns:
+        CalibrationParams: Input params with normalized per-camera pixel errors.
     """
-    Print a log message giving calibration results. Also stored in User/logs.txt.
-    """
 
-    if ret_intrinsics is not None:
-        ret_intrinsics = [float(np.around(r, decimals=3)) for r in ret_intrinsics]
-        logger.info(
-            f"\n--> Intrinsics reprojection errors (RMS) per camera: {ret_intrinsics} px."
-        )
+    camera_count = len(params.C)
+    intrinsics_errors = _normalize_error_list(params.ret_intrinsics, camera_count)
+    extrinsics_errors = _normalize_error_list(params.ret_extrinsics, camera_count)
 
-    if ret_extrinsics is not None:
-        ret_extrinsics = [float(np.around(r, decimals=3)) for r in ret_extrinsics]
-        logger.info(
-            f"\n--> Extrinsics reprojection errors (RMS) per camera: {ret_extrinsics} px."
-        )
+    intrinsics_px, intrinsics_mm = [], []
+    extrinsics_px, extrinsics_mm = [], []
+    convert_mode = calib_full_type.startswith("convert_")
 
-    logger.info(f"Calibration file is stored at {calib_path}.")
-    return ret_intrinsics, ret_extrinsics
+    for idx in range(camera_count):
+        f_px = 0.0
+        if idx < len(params.K):
+            with contextlib.suppress(Exception):
+                k_mat = np.asarray(params.K[idx], dtype=float)
+                f_px = float(k_mat[0, 0])
+
+        translation = np.zeros(3, dtype=float)
+        if idx < len(params.T):
+            with contextlib.suppress(Exception):
+                t_vec = np.asarray(params.T[idx], dtype=float).reshape(-1)
+                translation[: min(3, t_vec.size)] = t_vec[:3]
+
+        distance_m = float(euclidean_distance(translation, [0, 0, 0]))
+        px_per_mm = 0.0 if distance_m <= 0 or f_px <= 0 else f_px / (distance_m * 1000)
+        mm_per_px = 0.0 if f_px <= 0 else (distance_m * 1000) / f_px
+
+        if convert_mode:
+            intr_mm = intrinsics_errors[idx]
+            extr_mm = extrinsics_errors[idx]
+            intr_px = intr_mm * px_per_mm
+            extr_px = extr_mm * px_per_mm
+        else:
+            intr_px = intrinsics_errors[idx]
+            extr_px = extrinsics_errors[idx]
+            intr_mm = intr_px * mm_per_px
+            extr_mm = extr_px * mm_per_px
+
+        intrinsics_px.append(float(np.around(intr_px, decimals=3)))
+        intrinsics_mm.append(float(np.around(intr_mm, decimals=3)))
+        extrinsics_px.append(float(np.around(extr_px, decimals=3)))
+        extrinsics_mm.append(float(np.around(extr_mm, decimals=3)))
+
+    logger.info(
+        f"\n--> Intrinsics residual (RMS) errors per camera: {intrinsics_px} px ({intrinsics_mm} mm)."
+    )
+    logger.info(
+        f"--> Extrinsics residual (RMS) errors per camera: {extrinsics_px} px ({extrinsics_mm} mm).\n"
+    )
+
+    params.ret_intrinsics = intrinsics_px
+    params.ret_extrinsics = extrinsics_px
+    return params
 
 
 def calibrate_cams_all(config_dict):
@@ -1232,22 +1298,21 @@ def calibrate_cams_all(config_dict):
     calib_fun = calib_mapping[calib_full_type]
 
     # Calibrate
-    ret_intrinsics, ret_extrinsics, C, S, D, K, R, T = calib_fun(*args_calib_fun)
+    params = calib_fun(*args_calib_fun)
 
     # Recap message
-    ret_intrinsics, ret_extrinsics = recap_calibrate(
-        ret_intrinsics, ret_extrinsics, calib_output_path
-    )
+    params = recap_calibrate(params, calib_full_type)
+    logger.info(f"Calibration file is stored at {calib_output_path}.")
 
     # Write calibration file with error metadata
     toml_write(
         calib_output_path,
-        C,
-        S,
-        D,
-        K,
-        R,
-        T,
-        intrinsics_error_px=ret_intrinsics,
-        extrinsics_error_px=ret_extrinsics,
+        params.C,
+        params.S,
+        params.D,
+        params.K,
+        params.R,
+        params.T,
+        intrinsics_error_px=params.ret_intrinsics,
+        extrinsics_error_px=params.ret_extrinsics,
     )

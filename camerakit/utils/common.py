@@ -5,7 +5,8 @@ import platform
 import re
 import subprocess
 import sys
-from typing import Dict, Optional
+from dataclasses import dataclass
+from typing import Any, Dict, Optional
 
 import cv2
 from easydict import EasyDict as edict
@@ -81,6 +82,20 @@ def setup_logging(session_dir: Optional[str] = None, level=logging.INFO):
         logger.addHandler(handler)
 
     return logger
+
+
+@dataclass
+class CalibrationParams:
+    """Container for calibration outputs shared by calculators and converters."""
+
+    ret_intrinsics: list[float]
+    ret_extrinsics: list[float]
+    C: list[str]
+    S: list[Any]
+    D: list[Any]
+    K: list[Any]
+    R: list[Any]
+    T: list[Any]
 
 
 class suppress_stderr:
