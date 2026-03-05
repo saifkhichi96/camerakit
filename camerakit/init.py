@@ -19,6 +19,7 @@ intrinsics_extension = "mp4"
 extract_every_N_sec = 1
 intrinsics_corners_nb = [9, 6]
 intrinsics_square_size = 25
+fisheye = false
 
 [calibration.calculate.extrinsics]
 calculate_extrinsics = true

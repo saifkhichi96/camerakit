@@ -80,6 +80,7 @@ def calib_calc_fun(
         calib_dir: Calibration directory containing `intrinsics/` and `extrinsics/`.
         intrinsics_config_dict: Intrinsics calibration configuration dictionary.
         extrinsics_config_dict: Extrinsics calibration configuration dictionary.
+            Fisheye mode is inherited from `intrinsics_config_dict["fisheye"]`.
 
     Returns:
         CalibrationParams: Intrinsics/extrinsics residuals and calibration arrays.
@@ -123,6 +124,9 @@ def calib_calc_fun(
     if calculate_extrinsics:
         logger.info("\nCalculating extrinsic parameters...")
 
+        # pass fisheye flag to extrinsic calibration
+        extrinsics_config_dict["fisheye"] = intrinsics_config_dict.get("fisheye", False)
+
         # check that the number of cameras is consistent
         nb_cams_extrinsics = len(
             next(os.walk(os.path.join(calib_dir, "extrinsics")))[1]
@@ -160,10 +164,12 @@ def calibrate_intrinsics(calib_dir, intrinsics_config_dict):
     Args:
         calib_dir: Calibration directory containing `intrinsics/`.
         intrinsics_config_dict: Intrinsics calibration configuration dictionary.
+            If `fisheye` is true, the OpenCV fisheye model is used.
 
     Returns:
         tuple[list, list, list, list, list, list, list]: Residuals, camera names,
-        image sizes, distortions, intrinsics, placeholder rotations, and translations.
+        image sizes, 4-parameter distortions, intrinsics, placeholder rotations, and
+        translations.
     """
 
     try:
@@ -272,21 +278,47 @@ def calibrate_intrinsics(calib_dir, intrinsics_config_dict):
             )
 
         img = cv2.imread(str(img_path))
-        objpoints = np.array(objpoints)
+        objpoints_arr = np.array(objpoints)
 
-        ret_cam, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(
-            objpoints,
-            imgpoints,
-            img.shape[1::-1],
-            None,
-            None,
-            flags=(cv2.CALIB_FIX_K3 + cv2.CALIB_FIX_PRINCIPAL_POINT),
-        )
+        if intrinsics_config_dict.get("fisheye", False):
+            # Fisheye calibration expects per-view arrays shaped (N, 1, 3)/(N, 1, 2).
+            objpoints_fisheye = [
+                np.asarray(op, dtype=np.float64).reshape(-1, 1, 3) for op in objpoints
+            ]
+            imgpoints_fisheye = [
+                np.asarray(ip, dtype=np.float64).reshape(-1, 1, 2) for ip in imgpoints
+            ]
+            ret_cam, mtx, dist, rvecs, tvecs = cv2.fisheye.calibrate(
+                objpoints_fisheye,
+                imgpoints_fisheye,
+                img.shape[1::-1],
+                None,
+                None,
+                flags=cv2.fisheye.CALIB_FIX_SKEW,
+                criteria=(
+                    cv2.TERM_CRITERIA_MAX_ITER + cv2.TERM_CRITERIA_EPS,
+                    100,
+                    1e-6,
+                ),
+            )
+        else:
+            ret_cam, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(
+                objpoints_arr,
+                imgpoints,
+                img.shape[1::-1],
+                None,
+                None,
+                flags=(cv2.CALIB_FIX_K3 + cv2.CALIB_FIX_PRINCIPAL_POINT),
+            )
         h, w = [np.float32(i) for i in img.shape[:-1]]
         ret.append(ret_cam)
         C.append(cam)
         S.append([w, h])
-        D.append(dist[0])
+        # Keep the first 4 parameters in TOML for backward compatibility.
+        dist_flat = np.asarray(dist, dtype=float).reshape(-1)
+        if dist_flat.size < 4:
+            dist_flat = np.pad(dist_flat, (0, 4 - dist_flat.size), mode="constant")
+        D.append(dist_flat[:4])
         K.append(mtx)
         R.append([0.0, 0.0, 0.0])
         T.append([0.0, 0.0, 0.0])
@@ -304,6 +336,8 @@ def calibrate_extrinsics(calib_dir, extrinsics_config_dict, C, S, K, D):
     Args:
         calib_dir: Calibration directory containing `extrinsics/`.
         extrinsics_config_dict: Extrinsics calibration configuration dictionary.
+            If `fisheye` is true, 2D points are first undistorted and PnP is solved
+            in normalized image coordinates.
         C: Camera names from intrinsics stage.
         S: Image sizes from intrinsics stage.
         K: Intrinsic matrices from intrinsics stage.
@@ -456,8 +490,22 @@ def calibrate_extrinsics(calib_dir, extrinsics_config_dict, C, S, K, D):
                 imgp = cv2.cornerSubPix(gray, imgp, (1, 1), (-1, -1), criteria)
 
             # Calculate extrinsics
-            mtx, dist = np.array(K[i]), np.array(D[i])
-            _, r, t = cv2.solvePnP(np.array(objp), imgp, mtx, dist)
+            fisheye_cam = extrinsics_config_dict.get("fisheye", False)
+            if fisheye_cam:
+                mtx = np.asarray(K[i], dtype=np.float64)
+                dist = np.asarray(D[i], dtype=np.float64).reshape(-1, 1)
+                imgp_undist = cv2.fisheye.undistortPoints(imgp, mtx, dist)
+                identity = np.identity(3, dtype=np.float64)
+                _, r, t = cv2.solvePnP(
+                    np.asarray(objp, dtype=np.float64),
+                    np.asarray(imgp_undist, dtype=np.float64),
+                    identity,
+                    None,
+                    flags=cv2.SOLVEPNP_ITERATIVE,
+                )
+            else:
+                mtx, dist = np.array(K[i]), np.array(D[i])
+                _, r, t = cv2.solvePnP(np.array(objp), imgp, mtx, dist)
             r, t = r.flatten(), t.flatten()
 
             # Projection of object points to image plane
@@ -467,7 +515,15 @@ def calibrate_extrinsics(calib_dir, extrinsics_config_dict, C, S, K, D):
             # H_cam = np.block([[r_mat,t.reshape(3,1)], [np.zeros(3), 1 ]])
             # P_cam = Kh_cam @ H_cam
             # proj_obj = [ ( P_cam[0] @ np.append(o, 1) /  (P_cam[2] @ np.append(o, 1)),  P_cam[1] @ np.append(o, 1) /  (P_cam[2] @ np.append(o, 1)) ) for o in objp]
-            proj_obj = np.squeeze(cv2.projectPoints(objp, r, t, mtx, dist)[0])
+            if fisheye_cam:
+                objp_fisheye = np.asarray(objp, dtype=np.float64).reshape((-1, 1, 3))
+                rvec = np.asarray(r, dtype=np.float64).reshape(3, 1)
+                tvec = np.asarray(t, dtype=np.float64).reshape(3, 1)
+                proj_obj = cv2.fisheye.projectPoints(
+                    objp_fisheye, rvec, tvec, mtx, dist
+                )[0].reshape(-1, 2)
+            else:
+                proj_obj = np.squeeze(cv2.projectPoints(objp, r, t, mtx, dist)[0])
 
             # Check calibration results
             if show_reprojection_error:
