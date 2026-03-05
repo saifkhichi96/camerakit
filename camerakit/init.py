@@ -1,7 +1,7 @@
 import argparse
 from pathlib import Path
 
-from .utils.common import get_logger
+from .utils.common import get_logger, setup_logging
 
 logger = get_logger()
 
@@ -34,6 +34,8 @@ show_reprojection_error = true
 
 def main():
     """Create a CameraKit project layout and default config."""
+    setup_logging()
+
     parser = argparse.ArgumentParser(
         description="Initialize a CameraKit calibration project."
     )

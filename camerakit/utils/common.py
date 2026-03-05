@@ -1,3 +1,4 @@
+import contextlib
 import logging
 import logging.handlers
 import os
@@ -53,10 +54,10 @@ def setup_logging(session_dir: Optional[str] = None, level=logging.INFO):
 
     Args:
         session_dir: Optional directory where `logs.txt` should be written.
-        level: Logging level for root logger and handlers.
+        level: Logging level for CameraKit logger and handlers.
 
     Returns:
-        logging.Logger: Root logger configured for the session.
+        logging.Logger: The package logger configured for the session.
     """
     handlers = [logging.StreamHandler()]
     if session_dir:
@@ -70,8 +71,14 @@ def setup_logging(session_dir: Optional[str] = None, level=logging.INFO):
     # Configure logging with timestamps and log level.
     logger = get_logger()
     logger.setLevel(level)
-    logger.handlers = []  # Clear existing handlers to avoid duplicates
     logger.propagate = False
+
+    # Clear and close existing handlers to avoid duplicates and leaked file handles.
+    for existing in list(logger.handlers):
+        logger.removeHandler(existing)
+        with contextlib.suppress(Exception):
+            existing.close()
+
     for handler in handlers:
         handler.setLevel(level)
         handler.setFormatter(
