@@ -5,14 +5,15 @@
 
 Use this module to calibrate your cameras and save results to a .toml file.
 
-It calibrates cameras from checkerboard images or videos.
+It either converts a Qualisys calibration .qca.txt file,
+Or calibrates cameras from checkerboard images or videos.
 
 Checkerboard calibration is based on
 https://docs.opencv.org/3.4.15/dc/dbb/tutorial_py_calibration.html.
 
 INPUTS:
-- folders 'calibration/intrinsics' (populated with video or about 30 images) and
-  'calibration/extrinsics' (populated with video or one image)
+- a calibration file in the 'calibration' folder (.qca.txt extension)
+- OR folders 'calibration/intrinsics' (populated with video or about 30 images) and 'calibration/extrinsics' (populated with video or one image)
 - a Config.toml file in the project folder
 
 OUTPUTS:
@@ -49,6 +50,13 @@ from .calib import (
 from .common import CalibrationParams, get_logger
 from .pose import (
     find_outer_corners,
+)
+from .third_party import (
+    calib_biocv_fun,
+    calib_easymocap_fun,
+    calib_opencap_fun,
+    calib_qca_fun,
+    calib_vicon_fun,
 )
 
 ## SETUP LOGGING
@@ -1348,14 +1356,90 @@ def calibrate_cams_all(config_dict):
         calib_full_type = calib_type
         args_calib_fun = [calib_dir, intrinsics_config_dict, extrinsics_config_dict]
 
+    elif calib_type == "convert":
+        convert_filetype = (
+            config_dict.get("calibration").get("convert").get("convert_from")
+        )
+        try:
+            if convert_filetype == "qualisys":
+                convert_ext = ".qca.txt"
+                file_to_convert_path = glob.glob(
+                    os.path.join(calib_dir, f"*{convert_ext}*")
+                )[0]
+                binning_factor = (
+                    config_dict.get("calibration")
+                    .get("convert")
+                    .get("qualisys")
+                    .get("binning_factor")
+                )
+            elif convert_filetype == "vicon":
+                convert_ext = ".xcp"
+                file_to_convert_path = glob.glob(
+                    os.path.join(calib_dir, f"*{convert_ext}")
+                )[0]
+                binning_factor = 1
+            elif convert_filetype == "opencap":  # all files with .pickle extension
+                convert_ext = ".pickle"
+                file_to_convert_path = sorted(
+                    glob.glob(os.path.join(calib_dir, f"*{convert_ext}"))
+                )
+                binning_factor = 1
+            elif convert_filetype == "easymocap":  # intri.yml and intri.yml
+                convert_ext = ".yml"
+                file_to_convert_path = sorted(
+                    glob.glob(os.path.join(calib_dir, f"*{convert_ext}"))
+                )
+                binning_factor = 1
+            elif (
+                convert_filetype == "biocv"
+            ):  # all files without extension -> now with .calib extension
+                # convert_ext = 'no'
+                # list_dir = os.listdir(calib_dir)
+                # list_dir_noext = sorted([os.path.splitext(f)[0] for f in list_dir if os.path.splitext(f)[1]==''])
+                # file_to_convert_path = [os.path.join(calib_dir,f) for f in list_dir_noext if os.path.isfile(os.path.join(calib_dir, f))]
+                convert_ext = ".calib"
+                file_to_convert_path = sorted(
+                    glob.glob(os.path.join(calib_dir, f"*{convert_ext}"))
+                )
+                binning_factor = 1
+            elif (
+                convert_filetype == "anipose"
+                or convert_filetype == "freemocap"
+                or convert_filetype == "caliscope"
+            ):  # no conversion needed, skips this stage
+                logger.info(
+                    "\n--> No conversion needed from Caliscope, AniPose, nor from FreeMocap. Calibration skipped.\n"
+                )
+                return
+            else:
+                convert_ext = "???"
+                file_to_convert_path = [""]
+                raise NameError(
+                    f"Calibration conversion from {convert_filetype} is not supported."
+                ) from None
+            assert file_to_convert_path != []
+        except:
+            raise NameError(
+                f"No file with {convert_ext} extension found in {calib_dir}."
+            )
+
+        calib_output_path = os.path.join(calib_dir, f"Calib_{convert_filetype}.toml")
+        calib_full_type = "_".join([calib_type, convert_filetype])
+        args_calib_fun = [file_to_convert_path, binning_factor]
+
     else:
         raise ValueError(
-            'Unsupported calibration_type. Use calibration_type = "calculate".'
+            'Unsupported calibration_type. Use calibration_type = "calculate" or "convert".'
         )
 
     # Map calib function
     calib_mapping = {
         "calculate": calib_calc_fun,
+        "convert_qualisys": calib_qca_fun,
+        "convert_vicon": calib_vicon_fun,
+        "convert_opencap": calib_opencap_fun,
+        "convert_easymocap": calib_easymocap_fun,
+        "convert_biocv": calib_biocv_fun,
     }
     calib_fun = calib_mapping[calib_full_type]
 
