@@ -92,6 +92,15 @@ documentation workflow, and roadmap priorities.
 
 See [RELEASE_NOTES.md](RELEASE_NOTES.md).
 
+## Third-Party Notices
+
+Some portions of this project include code derived from third-party sources under
+their original licenses. See:
+
+- [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
+- [licenses/BSD-3-Clause-pose2sim.txt](licenses/BSD-3-Clause-pose2sim.txt)
+
 ## License
 
-CameraKit is licensed under the MIT License. See [LICENSE](LICENSE).
+CameraKit is licensed under the MIT License. See [LICENSE](LICENSE), plus
+third-party notices and licenses listed above.
