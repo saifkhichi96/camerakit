@@ -100,7 +100,19 @@ class SynchronizedVideoCapture:
             cam.release()
 
     def __enter__(self):
+        """Return this capture object for context-manager usage.
+
+        Returns:
+            SynchronizedVideoCapture: Active synchronized capture instance.
+        """
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
+        """Release all camera resources when leaving a context manager.
+
+        Args:
+            exc_type: Exception type raised inside context, if any.
+            exc_value: Exception instance raised inside context, if any.
+            traceback: Traceback for the exception, if any.
+        """
         self.release()

@@ -6,14 +6,7 @@ from easydict import EasyDict as edict
 
 
 class CalibrationData:
-    DEFAULT_RESOLUTION = (640, 480)
-    DEFAULT_K = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
-    DEFAULT_DISTORTIONS = [0, 0, 0, 0]
-    DEFAULT_ROTATION = [0, 0, 0]
-    DEFAULT_TRANSLATION = [0, 0, 0]
-
-    """
-    Represents a single camera with its calibration parameters.
+    """Represent one camera with intrinsic and extrinsic calibration data.
 
     Attributes:
         id (str): Unique identifier for the camera.
@@ -28,6 +21,12 @@ class CalibrationData:
         intrinsics_error_px (float): Intrinsics reprojection error (px), if available.
         extrinsics_error_px (float): Extrinsics reprojection error (px), if available.
     """
+
+    DEFAULT_RESOLUTION = (640, 480)
+    DEFAULT_K = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
+    DEFAULT_DISTORTIONS = [0, 0, 0, 0]
+    DEFAULT_ROTATION = [0, 0, 0]
+    DEFAULT_TRANSLATION = [0, 0, 0]
 
     def __init__(
         self,

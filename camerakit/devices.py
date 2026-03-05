@@ -5,6 +5,7 @@ from .utils.common import configure_opencv_logging
 
 
 def main():
+    """List discoverable cameras and their metadata."""
     configure_opencv_logging(silent=True)
     parser = argparse.ArgumentParser(description="List available cameras.")
     parser.add_argument(

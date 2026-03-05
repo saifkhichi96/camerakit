@@ -13,12 +13,19 @@ LOGGER_NAME = "camerakit"
 
 
 def get_logger():
+    """Return the shared CameraKit logger instance.
+
+    Returns:
+        logging.Logger: Package-level logger.
+    """
     return logging.getLogger(LOGGER_NAME)
 
 
 def configure_opencv_logging(silent: bool = True):
-    """
-    Reduce or silence OpenCV's internal logging to avoid noisy stderr output.
+    """Reduce or silence OpenCV internal logging.
+
+    Args:
+        silent: If `True`, prefer the most restrictive OpenCV log level.
     """
     os.environ.setdefault("OPENCV_LOG_LEVEL", "ERROR")
     # OpenCV Python API varies across versions; try the available hooks.
@@ -40,8 +47,14 @@ def configure_opencv_logging(silent: bool = True):
 
 
 def setup_logging(session_dir: Optional[str] = None, level=logging.INFO):
-    """
-    Create logging file and stream handlers
+    """Configure global logging handlers for a session.
+
+    Args:
+        session_dir: Optional directory where `logs.txt` should be written.
+        level: Logging level for root logger and handlers.
+
+    Returns:
+        logging.Logger: Root logger configured for the session.
     """
     handlers = [logging.StreamHandler()]
     if session_dir:
@@ -107,6 +120,14 @@ def find_supported_resolutions_and_fps(camera_index, codec):
 
 
 def get_camera_hardware_linux(cam_id):
+    """Read Linux camera hardware details via `udevadm`.
+
+    Args:
+        cam_id: Camera device index.
+
+    Returns:
+        dict[str, str]: Manufacturer, model number, and serial number.
+    """
     # Prepare the external command to extract serial_number number.
     p = subprocess.Popen(
         f'udevadm info --query=all /dev/video{cam_id} | grep "ID_"',
@@ -140,6 +161,14 @@ def get_camera_hardware_linux(cam_id):
 
 
 def get_camera_hardware_windows(cam_id):
+    """Read Windows camera hardware details via WMIC.
+
+    Args:
+        cam_id: Camera device index.
+
+    Returns:
+        dict[str, str]: Manufacturer, model number, and serial number when available.
+    """
     # Use WMIC to get camera info
     # WMIC class Win32_PnPEntity can be used to get device details
     cmd = "wmic path Win32_PnPEntity where \"Service='usbvideo'\" get DeviceID,Manufacturer,Name,PNPDeviceID /format:list"
@@ -182,9 +211,10 @@ def get_camera_hardware_windows(cam_id):
 
 
 def get_camera_hardware_macos():
-    """
-    Retrieve camera hardware information for macOS.
-    Maps camera indices from OpenCV to their respective Unique IDs.
+    """Retrieve macOS camera metadata and map it to OpenCV camera indices.
+
+    Returns:
+        list[easydict.EasyDict]: Camera metadata dictionaries enriched with OpenCV IDs.
     """
     cmd = "system_profiler SPCameraDataType"
     output = subprocess.check_output(cmd, shell=True, text=True)
@@ -225,15 +255,14 @@ def get_camera_hardware_macos():
 
 
 def get_camera_hardware(cam_id: int) -> Optional[Dict[str, str]]:
-    """
-    Retrieves camera hardware information including manufacturer, model_number, and serial_number number.
+    """Retrieve hardware metadata for a camera index on the active OS.
 
-    Parameters:
-        cam_id (int): The camera device ID (e.g., 0 for /dev/video0 on Linux).
+    Args:
+        cam_id: Camera device ID (for example `0` for `/dev/video0` on Linux).
 
     Returns:
-        dict: A dictionary containing 'manufacturer', 'model_number', and 'serial_number' keys.
-              Returns None if the information cannot be retrieved.
+        dict[str, str] | None: Hardware metadata dictionary or `None` for unsupported
+        cases on macOS.
     """
     system = platform.system()
     default = {

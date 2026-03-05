@@ -30,6 +30,19 @@ class CameraInfo:
         D: list = None,
         reprojection_error: float = 0.0,
     ):
+        """Initialize camera metadata and calibration values.
+
+        Args:
+            manufacturer: Camera manufacturer name.
+            serial_number: Camera serial number.
+            model_number: Camera model number.
+            resolution: Resolution as `(width, height)`.
+            name: Optional display name. If omitted, generated from metadata.
+            frame_rate: Frame rate in FPS. Defaults to `-1` when unknown.
+            K: Intrinsic matrix.
+            D: Distortion coefficients.
+            reprojection_error: Reprojection error in pixels.
+        """
         self.name = name
         self.manufacturer = manufacturer
         self.serial_number = serial_number
@@ -50,8 +63,13 @@ class CameraInfo:
 
     @staticmethod
     def from_dict(data: dict) -> "CameraInfo":
-        """
-        Create a CameraInfo object from a dictionary.
+        """Build a `CameraInfo` object from a dictionary.
+
+        Args:
+            data: Camera data dictionary.
+
+        Returns:
+            CameraInfo: Parsed camera info instance.
         """
         return CameraInfo(
             name=data.get("name"),
@@ -67,16 +85,19 @@ class CameraInfo:
 
     @property
     def id(self) -> str:
-        """
-        Generate a unique ID for the camera based on its properties.
-        The ID is generated using the MD5 algorithm.
+        """Generate a deterministic camera ID from hardware properties.
+
+        Returns:
+            str: MD5 hash computed from manufacturer, serial, model, and resolution.
         """
         unique_str = f"{self.manufacturer}_{self.serial_number}_{self.model_number}_{self.resolution}"
         return hashlib.md5(unique_str.encode("utf-8")).hexdigest()
 
     def to_dict(self) -> dict:
-        """
-        Convert the camera information to a dictionary.
+        """Serialize camera info to a dictionary.
+
+        Returns:
+            dict: Dictionary representation of the camera.
         """
         return {
             "id": self.id,
@@ -92,9 +113,22 @@ class CameraInfo:
         }
 
     def __repr__(self):
+        """Return a developer-friendly string representation.
+
+        Returns:
+            str: Printable representation of this camera metadata object.
+        """
         return f"CameraInfo(manufacturer={self.manufacturer}, serial_number={self.serial_number}, model_number={self.model_number}, resolution={self.resolution}, name={self.name})"
 
     def __eq__(self, other):
+        """Compare cameras by immutable hardware-identifying fields.
+
+        Args:
+            other: Object to compare against.
+
+        Returns:
+            bool: `True` when both objects represent the same hardware camera.
+        """
         return (
             isinstance(other, CameraInfo)
             and self.manufacturer == other.manufacturer
@@ -104,9 +138,10 @@ class CameraInfo:
         )
 
     def __hash__(self):
-        """
-        Generate a hash for the camera information.
-        This is used to ensure that the camera information can be used as a key in dictionaries or sets.
+        """Hash camera identity fields for set/dict usage.
+
+        Returns:
+            int: Hash value for this camera.
         """
         return hash(
             (self.manufacturer, self.serial_number, self.model_number, self.resolution)

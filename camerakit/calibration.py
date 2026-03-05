@@ -9,14 +9,14 @@ from .utils import calibrate_cams_all, setup_logging
 
 
 def recursive_update(dict_to_update, dict_with_new_values):
-    """
-    Update nested dictionaries without overwriting existing keys in any level of nesting
+    """Recursively merge two dictionaries.
 
-    Example:
-    dict_to_update = {'key': {'key_1': 'val_1', 'key_2': 'val_2'}}
-    dict_with_new_values = {'key': {'key_1': 'val_1_new'}}
-    returns {'key': {'key_1': 'val_1_new', 'key_2': 'val_2'}}
-    while dict_to_update.update(dict_with_new_values) would return {'key': {'key_1': 'val_1_new'}}
+    Args:
+        dict_to_update: Base dictionary to modify in place.
+        dict_with_new_values: Dictionary containing overriding values.
+
+    Returns:
+        dict: The merged dictionary.
     """
 
     for key, value in dict_with_new_values.items():
@@ -35,10 +35,16 @@ def recursive_update(dict_to_update, dict_with_new_values):
 
 
 def determine_level(config_dir):
-    """
-    Determine the level at which the function is called.
-    Level = 1: Trial folder
-    Level = 2: Root folder
+    """Determine whether the config path points to trial or root level.
+
+    Args:
+        config_dir: Directory to inspect for `Config.toml` files.
+
+    Returns:
+        int: `1` for trial-level calibration, `2` for root-level batch calibration.
+
+    Raises:
+        FileNotFoundError: If no `Config.toml` files are found.
     """
 
     len_paths = [
@@ -54,9 +60,13 @@ def determine_level(config_dir):
 
 
 def read_config_files(config):
-    """
-    Read Root and Trial configuration files,
-    and output a dictionary with all the parameters.
+    """Load and normalize calibration configuration input.
+
+    Args:
+        config: Either a config dictionary, a directory path, or `None`.
+
+    Returns:
+        tuple[int, list[dict]]: Calibration level and expanded config dictionaries.
     """
 
     if isinstance(config, dict):
@@ -113,12 +123,10 @@ def read_config_files(config):
 
 
 def run_calibration(config=None):
-    """
-    Cameras calibration from checkerboards.
+    """Run camera calibration from project config and calibration assets.
 
-    config can be a dictionary,
-    or a the directory path of a trial, participant, or session,
-    or the function can be called without an argument, in which case it the config directory is the current one.
+    Args:
+        config: Config dictionary, config directory path, or `None` (current directory).
     """
 
     level, config_dicts = read_config_files(config)
@@ -164,6 +172,7 @@ def run_calibration(config=None):
 
 
 def main():
+    """Parse CLI arguments and run calibration."""
     import argparse
 
     parser = argparse.ArgumentParser(description="Camera calibration script")

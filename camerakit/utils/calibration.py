@@ -50,6 +50,14 @@ logger = get_logger()
 
 
 def get_frame(img_or_video):
+    """Load the first frame from an image or video path.
+
+    Args:
+        img_or_video: Path to an image or video file.
+
+    Returns:
+        np.ndarray | None: Loaded frame, or `None` if reading fails.
+    """
     img = cv2.imread(img_or_video)
     if img is None:
         cap = cv2.VideoCapture(img_or_video)
@@ -63,25 +71,16 @@ def get_frame(img_or_video):
 
 ## FUNCTIONS
 def calib_calc_fun(calib_dir, intrinsics_config_dict, extrinsics_config_dict):
-    """
-    Calibrates intrinsic and extrinsic parameters
-    from images or videos of a checkerboard
-    or retrieve them from a file
+    """Compute calibration from checkerboard data or existing calibration file.
 
-    INPUTS:
-    - calib_dir: directory containing intrinsic and extrinsic folders, each populated with camera directories
-    - intrinsics_config_dict: dictionary of intrinsics parameters (overwrite_intrinsics, show_detection_intrinsics, intrinsics_extension, extract_every_N_sec, intrinsics_corners_nb, intrinsics_square_size, intrinsics_marker_size, intrinsics_aruco_dict)
-    - extrinsics_config_dict: dictionary of extrinsics parameters (calculate_extrinsics, show_detection_extrinsics, extrinsics_extension, extrinsics_corners_nb, extrinsics_square_size, extrinsics_marker_size, extrinsics_aruco_dict, object_coords_3d)
+    Args:
+        calib_dir: Calibration directory containing `intrinsics/` and `extrinsics/`.
+        intrinsics_config_dict: Intrinsics calibration configuration dictionary.
+        extrinsics_config_dict: Extrinsics calibration configuration dictionary.
 
-    OUTPUTS:
-    - ret_intrinsics: residual reprojection error for intrinsics in _px_: list of floats
-    - ret_extrinsics: residual reprojection error for extrinsics in _px_: list of floats or None
-    - C: camera name: list of strings
-    - S: image size: list of list of floats
-    - D: distortion: list of arrays of floats
-    - K: intrinsic parameters: list of 3x3 arrays of floats
-    - R: extrinsic rotation: list of arrays of floats (Rodrigues)
-    - T: extrinsic translation: list of arrays of floats
+    Returns:
+        tuple[list, list, list, list, list, list, list]: Residuals, camera names,
+        image sizes, distortions, intrinsics, Rodrigues rotations, and translations.
     """
 
     overwrite_intrinsics = intrinsics_config_dict.get("overwrite_intrinsics")
@@ -160,18 +159,15 @@ def calib_calc_fun(calib_dir, intrinsics_config_dict, extrinsics_config_dict):
 
 
 def calibrate_intrinsics(calib_dir, intrinsics_config_dict):
-    """
-    Calculate intrinsic parameters
-    from images or videos of a checkerboard
-    Extract frames, then detect corners, then calibrate
+    """Estimate intrinsic parameters for all cameras in the project.
 
-    INPUTS:
-    - calib_dir: directory containing intrinsic and extrinsic folders, each populated with camera directories
-    - intrinsics_config_dict: dictionary of intrinsics parameters (overwrite_intrinsics, show_detection_intrinsics, intrinsics_extension, extract_every_N_sec, intrinsics_corners_nb, intrinsics_square_size, intrinsics_marker_size, intrinsics_aruco_dict)
+    Args:
+        calib_dir: Calibration directory containing `intrinsics/`.
+        intrinsics_config_dict: Intrinsics calibration configuration dictionary.
 
-    OUTPUTS:
-    - D: distortion: list of arrays of floats
-    - K: intrinsic parameters: list of 3x3 arrays of floats
+    Returns:
+        tuple[list, list, list, list, list, list, list]: Residuals, camera names,
+        image sizes, distortions, intrinsics, placeholder rotations, and translations.
     """
 
     try:
@@ -301,18 +297,19 @@ def calibrate_intrinsics(calib_dir, intrinsics_config_dict):
 
 
 def calibrate_extrinsics(calib_dir, extrinsics_config_dict, C, S, K, D):
-    """
-    Calibrates extrinsic parameters
-    from an image or the first frame of a video
-    of a checkerboard or of measured clues on the scene
+    """Estimate extrinsic parameters for all cameras.
 
-    INPUTS:
-    - calib_dir: directory containing intrinsic and extrinsic folders, each populated with camera directories
-    - extrinsics_config_dict: dictionary of extrinsics parameters (extrinsics_method, calculate_extrinsics, show_detection_extrinsics, extrinsics_extension, extrinsics_corners_nb, extrinsics_square_size, extrinsics_marker_size, extrinsics_aruco_dict, object_coords_3d)
+    Args:
+        calib_dir: Calibration directory containing `extrinsics/`.
+        extrinsics_config_dict: Extrinsics calibration configuration dictionary.
+        C: Camera names from intrinsics stage.
+        S: Image sizes from intrinsics stage.
+        K: Intrinsic matrices from intrinsics stage.
+        D: Distortion coefficients from intrinsics stage.
 
-    OUTPUTS:
-    - R: extrinsic rotation: list of arrays of floats (Rodrigues)
-    - T: extrinsic translation: list of arrays of floats
+    Returns:
+        tuple[list, list, list, list, list, list, list]: Residuals, camera names,
+        image sizes, distortions, intrinsics, Rodrigues rotations, and translations.
     """
 
     try:
@@ -579,16 +576,16 @@ def findCorners(img_path, corner_nb, objp=[], show=True, outermost_only=False):
     - it is flat and without reflections
     - corner_nb correspond to _internal_ corners
 
-    INPUTS:
-      img_path (str): Path to the image (or video file).
-      corner_nb (list or tuple): [cols, rows] internal corners in the chessboard (e.g. [7, 4]).
-      objp (np.ndarray): (Optional) 3D coordinates corresponding to the chessboard corners.
-      show (bool): If True, displays the detection results and allows manual confirmation.
-      outermost_only (bool): If True, only returns the four outer corners (after correction).
+    Args:
+        img_path: Path to image or video input.
+        corner_nb: Chessboard internal corner layout as `(cols, rows)`.
+        objp: Optional 3D object points matching expected corners.
+        show: Whether to show the interactive verification window.
+        outermost_only: Whether to keep only four outer corners.
 
-    OUTPUTS:
-      If objp is provided: tuple (imgp_confirmed, objp_confirmed).
-      Otherwise: imgp_confirmed (2D detected corner coordinates).
+    Returns:
+        np.ndarray | tuple[np.ndarray, np.ndarray] | list | None: Confirmed image points,
+        optionally paired with object points, depending on inputs and detection outcome.
     """
 
     criteria = (
@@ -700,39 +697,26 @@ def findCorners(img_path, corner_nb, objp=[], show=True, outermost_only=False):
 
 
 def imgp_objp_visualizer_clicker(img, imgp=[], objp=[], img_path=""):
-    """
-    Shows image img.
-    If imgp is given, displays them in green
-    If objp is given, can be displayed in a 3D plot if 'C' is pressed.
-    If img_path is given, just uses it to name the window
+    """Open an interactive visualizer for validating or clicking calibration points.
 
-    If 'Y' is pressed, closes all and returns confirmed imgp and (if given) objp
-    If 'N' is pressed, closes all and returns nothing
-    If 'C' is pressed, allows clicking imgp by hand. If objp is given:
-        Displays them in 3D as a helper.
-        Left click to add a point, right click to remove the last point.
-        Press 'H' to indicate that one of the objp is not visible on image
-        Closes all and returns imgp and objp if all points have been clicked
-    Allows for zooming and panning with middle click
+    Args:
+        img: Image as NumPy array.
+        imgp: Optional detected image points to review.
+        objp: Optional 3D object points for guidance.
+        img_path: Optional path used as the window title.
 
-    INPUTS:
-    - img: image opened with openCV
-    - optional: imgp: detected image points, to be accepted or not. Array of [[2d corner coordinates]]
-    - optional: objp: array of [3d corner coordinates]
-    - optional: img_path: path to image
-
-    OUTPUTS:
-    - imgp_confirmed: image points that have been correctly identified. array of [[2d corner coordinates]]
-    - only if objp!=[]: objp_confirmed: array of [3d corner coordinates]
+    Returns:
+        tuple[np.ndarray, np.ndarray] | np.ndarray | None: Confirmed image/object points
+        when accepted, or `None` when dismissed.
     """
     global old_image_path
     old_image_path = img_path
 
     def on_key(event):
-        """
-        Handles key press events:
-        'Y' to return imgp, 'N' to dismiss image, 'C' to click points by hand.
-        Left click to add a point, 'H' to indicate it is not visible, right click to remove the last point.
+        """Handle key presses for accepting, rejecting, or editing detections.
+
+        Args:
+            event: Matplotlib key event.
         """
 
         global \
@@ -854,9 +838,10 @@ def imgp_objp_visualizer_clicker(img, imgp=[], objp=[], img_path=""):
                 pass
 
     def on_click(event):
-        """
-        Detect click position on image
-        If right click, last point is removed
+        """Handle mouse clicks while manually selecting image points.
+
+        Args:
+            event: Matplotlib mouse event.
         """
 
         global \
@@ -964,13 +949,10 @@ def imgp_objp_visualizer_clicker(img, imgp=[], objp=[], img_path=""):
                         fig_3d.canvas.draw()
 
     def set_axes_equal(ax):
-        """
-        Make axes of 3D plot have equal scale so that spheres appear as spheres,
-        cubes as cubes, etc.
-        From https://stackoverflow.com/questions/13685386/how-to-set-the-equal-aspect-ratio-for-all-axes-x-y-z
+        """Set equal scaling on all axes of a 3D plot.
 
-        Input
-        ax: a matplotlib axis, e.g., as output from plt.gca().
+        Args:
+            ax: Matplotlib 3D axis.
         """
 
         x_limits = ax.get_xlim3d()
@@ -1202,16 +1184,13 @@ def recap_calibrate(ret_intrinsics, ret_extrinsics, calib_path):
 
 
 def calibrate_cams_all(config_dict):
-    """
-    Calculates calibration from scratch (from a board or from scene points).
-    Stores calibration in a .toml file
-    Prints recap.
+    """Run the full calibration flow from configuration.
 
-    INPUTS:
-    - a config_dict dictionary
+    Depending on `calibration_type`, this either converts a third-party calibration
+    file or computes intrinsics/extrinsics from raw calibration media.
 
-    OUTPUT:
-    - a .toml camera calibration file
+    Args:
+        config_dict: Parsed calibration configuration dictionary.
     """
 
     # Read config_dict

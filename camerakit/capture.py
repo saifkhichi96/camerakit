@@ -9,6 +9,11 @@ from .utils import SynchronizedVideoCapture, find_cameras, setup_logging
 
 
 def parse_args():
+    """Parse CLI arguments for synchronized capture.
+
+    Returns:
+        argparse.Namespace: Parsed command-line arguments.
+    """
     parser = argparse.ArgumentParser(
         description="Record synchronized video from multiple cameras."
     )
@@ -92,8 +97,18 @@ def select_resolution_and_fps(options):
 
 
 def reencode_video(input_filename, output_filename, target_fps, width, height, codec):
-    """
-    Re-encode the video at input_filename using target_fps and write to output_filename.
+    """Re-encode a saved video file to a target FPS and codec.
+
+    Args:
+        input_filename: Source video path.
+        output_filename: Destination video path.
+        target_fps: Output frame rate.
+        width: Output frame width.
+        height: Output frame height.
+        codec: FourCC codec string.
+
+    Returns:
+        bool: `True` if re-encoding succeeds, else `False`.
     """
     # Wait a short moment to ensure the file is flushed to disk.
     time.sleep(0.5)
@@ -124,6 +139,7 @@ def reencode_video(input_filename, output_filename, target_fps, width, height, c
 
 
 def main():
+    """Run the interactive synchronized capture workflow."""
     args = parse_args()
     codec = args.codec
     data_dir = args.data_dir

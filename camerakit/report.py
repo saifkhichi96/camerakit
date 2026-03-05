@@ -5,6 +5,7 @@ from .core import CalibrationFile
 
 
 def main():
+    """Print a summary of a calibration TOML file."""
     parser = argparse.ArgumentParser(description="Summarize a calibration TOML file.")
     parser.add_argument(
         "--input",

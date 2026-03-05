@@ -15,6 +15,12 @@ COMMANDS = {
 
 
 def _dispatch(module_main, passthrough_args):
+    """Invoke a subcommand entrypoint with forwarded argv.
+
+    Args:
+        module_main: Callable entrypoint for a subcommand.
+        passthrough_args: Arguments to forward to the subcommand.
+    """
     original_argv = sys.argv
     sys.argv = [original_argv[0]] + passthrough_args
     try:
@@ -24,6 +30,7 @@ def _dispatch(module_main, passthrough_args):
 
 
 def _print_help():
+    """Print top-level CLI usage and available subcommands."""
     print("CameraKit unified CLI. Use a subcommand to access a tool.\n")
     print("Usage:")
     print("  camerakit [-V|--version] <command> [args]\n")
@@ -34,6 +41,7 @@ def _print_help():
 
 
 def main():
+    """Run the unified CameraKit command-line interface."""
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("-h", "--help", action="store_true")
     parser.add_argument(

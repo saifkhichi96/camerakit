@@ -33,6 +33,7 @@ show_reprojection_error = true
 
 
 def main():
+    """Create a CameraKit project layout and default config."""
     parser = argparse.ArgumentParser(
         description="Initialize a CameraKit calibration project."
     )

@@ -9,16 +9,14 @@ logger = get_logger()
 
 
 def euclidean_distance(q1, q2):
-    """
-    Euclidean distance between 2 points (N-dim).
+    """Compute Euclidean distance between points in N dimensions.
 
-    INPUTS:
-    - q1: list of N_dimensional coordinates of point
-         or list of N points of N_dimensional coordinates
-    - q2: idem
+    Args:
+        q1: Point coordinates, or an array of points.
+        q2: Point coordinates, or an array of points.
 
-    OUTPUTS:
-    - euc_dist: float. Euclidian distance between q1 and q2
+    Returns:
+        float | np.ndarray: Scalar distance for 1D inputs, otherwise per-row distances.
     """
 
     q1 = np.array(q1)
@@ -37,17 +35,12 @@ def euclidean_distance(q1, q2):
 
 
 def extract_frames(video_path, extract_every_N_sec=1, overwrite_extraction=False):
-    """
-    Extract frames from video
-    if has not been done yet or if overwrite==True
+    """Extract PNG frames from a video at a fixed temporal interval.
 
-    INPUT:
-    - video_path: path to video whose frames need to be extracted
-    - extract_every_N_sec: extract one frame every N seconds (can be <1)
-    - overwrite_extraction: if True, overwrite even if frames have already been extracted
-
-    OUTPUT:
-    - extracted frames in folder
+    Args:
+        video_path: Path to the input video.
+        extract_every_N_sec: Save one frame every N seconds.
+        overwrite_extraction: Whether to overwrite previously extracted frames.
     """
 
     if (
@@ -86,24 +79,18 @@ def toml_write(
     intrinsics_error_px=None,
     extrinsics_error_px=None,
 ):
-    """
-    Writes calibration parameters to a .toml file
+    """Write camera calibration parameters to a TOML file.
 
-    INPUTS:
-    - calib_path: path to the output calibration file: string
-    - C: camera name: list of strings
-    - S: image size: list of list of floats
-    - D: distortion: list of arrays of floats
-    - K: intrinsic parameters: list of 3x3 arrays of floats
-    - R: extrinsic rotation: list of arrays of floats (Rodrigues)
-    - T: extrinsic translation: list of arrays of floats
-
-    Optional:
-    - intrinsics_error_px: list of per-camera intrinsic reprojection errors (px)
-    - extrinsics_error_px: list of per-camera extrinsic reprojection errors (px)
-
-    OUTPUTS:
-    - a .toml file cameras calibrations
+    Args:
+        calib_path: Output TOML file path.
+        C: Camera names.
+        S: Image sizes per camera.
+        D: Distortion coefficients per camera.
+        K: Intrinsic matrices per camera.
+        R: Rodrigues rotation vectors per camera.
+        T: Translation vectors per camera.
+        intrinsics_error_px: Optional intrinsics reprojection errors per camera.
+        extrinsics_error_px: Optional extrinsics reprojection errors per camera.
     """
 
     intrinsics_error_px = (
