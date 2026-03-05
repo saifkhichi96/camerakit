@@ -2,19 +2,26 @@
 
 ## v2.0.0
 
-This release establishes the v2 standard and aligns the CLI, documentation, and calibration outputs.
+This release established the v2 CLI and calibration output format.
 
-Highlights:
-- Unified CLI: a single `camerakit` entry point with `devices`, `calibrate`, `capture`, and `report` subcommands.
-- Removed legacy `ck-*` entrypoints.
-- Calibration outputs now store **separate** reprojection errors for intrinsics and extrinsics (`intrinsics_error_px`, `extrinsics_error_px`) per camera and in metadata.
-- Fisheye support removed (out of scope).
-- Conversion/keypoint routes removed (out of roadmap).
-- Added device listing and calibration summary helpers as subcommands.
-- Logging standardized on the CameraKit logger; OpenCV noise silenced for device discovery.
-- Documentation refreshed and CONTRIBUTING added with architecture + roadmap.
+### Highlights
 
-Breaking changes:
-- CLI entrypoints changed to `camerakit <subcommand>`.
-- Calibration TOML error key `error` replaced by `intrinsics_error_px` / `extrinsics_error_px`.
-- Fisheye flags are no longer accepted or written.
+- Added full Sphinx documentation site under `docs/` using the Furo theme.
+- Added a shared SVG package header used in both README and docs home.
+- Unified CLI under a single entry point:
+  - `camerakit devices`
+  - `camerakit init`
+  - `camerakit calibrate`
+  - `camerakit capture`
+  - `camerakit report`
+- Calibration outputs include separate error fields per camera and in metadata:
+  - `intrinsics_error_px`
+  - `extrinsics_error_px`
+- Added `camerakit report` for quick calibration summaries.
+- Logger usage standardized through the package logger.
+
+### Breaking changes (v1 -> v2)
+
+- Legacy `ck-*` command entrypoints were removed.
+- Calibration TOML legacy key `error` was superseded by
+  `intrinsics_error_px` and `extrinsics_error_px`.

@@ -1,69 +1,93 @@
 # Contributing to CameraKit
 
-Thanks for helping improve CameraKit. This document explains the architecture, data flow, and the current roadmap so changes stay aligned with the tool's direction.
+Thanks for contributing. This guide documents architecture, workflow, and roadmap boundaries.
 
-## Architecture overview
+## Project Structure
 
-CameraKit is a small CLI-first tool with a Python API. It is structured into a few key modules:
+Core command modules:
 
-- `camerakit/cli.py`: unified CLI entry point (`camerakit ...`).
-- `camerakit/calibration.py`: calibration implementation.
-- `camerakit/capture.py`: synchronized capture implementation.
-- `camerakit/devices.py`: device discovery implementation.
-- `camerakit/report.py`: calibration summary implementation.
-- `camerakit/utils/common.py`: device discovery utilities and logging setup.
-- `camerakit/utils/calibration.py`: calibration pipeline (intrinsics + extrinsics) and UI helpers.
-- `camerakit/utils/calib.py`: low-level helpers for frame extraction and TOML output.
-- `camerakit/utils/sync.py`: threaded capture for multi-camera video reads.
-- `camerakit/core/calibration_file.py`: reader for calibration TOML.
-- `camerakit/core/calibration_data.py`: per-camera calibration data model.
+- `camerakit/cli.py`: unified CLI dispatch.
+- `camerakit/devices.py`: camera discovery command.
+- `camerakit/init.py`: project scaffold command.
+- `camerakit/calibration.py`: calibration command entry.
+- `camerakit/capture.py`: synchronized capture command.
+- `camerakit/report.py`: calibration summary command.
 
-## Data flow
+Core runtime modules:
 
-1. A project directory contains `Config.toml` and a `calibration/` folder.
-2. `camerakit calibrate` reads `Config.toml`, finds calibration media, and runs the solver.
-3. Outputs are written to `calibration/Calib_<method>.toml`.
-4. `camerakit report` reads the TOML and prints a per-camera summary.
-5. `camerakit capture` records synchronized video sessions under `data/Session_*/Trial_*`.
+- `camerakit/utils/enumerator.py`: camera metadata + synchronizable filtering.
+- `camerakit/utils/common.py`: logging setup, OpenCV logging control, hardware probing helpers.
+- `camerakit/utils/calibration.py`: calibration pipeline internals.
+- `camerakit/utils/sync.py`: threaded multi-camera frame reader.
+- `camerakit/core/calibration_file.py`: calibration TOML reader/wrapper.
+- `camerakit/core/calibration_data.py`: per-camera data model.
 
-Project layout:
+## Development Workflow
 
-```
-project/
-  Config.toml
-  calibration/
-    intrinsics/
-      cam_00/ intrinsics.mp4
-    extrinsics/
-      cam_00/ extrinsics.png
+1. Create a branch.
+2. Make focused changes.
+3. Run local checks.
+4. Update docs/release notes for behavior changes.
+5. Open a pull request.
+
+Typical local checks:
+
+```bash
+python3 -m compileall camerakit
 ```
 
-## Logging
+If you have test tooling installed:
 
-All logging should go through the CameraKit logger (`logging.getLogger("camerakit")`).
-Use `setup_logging()` from `camerakit/utils/common.py` when you need file output.
+```bash
+pytest -q
+```
 
-## Roadmap
+## Logging Conventions
 
-The roadmap is mirrored on the website. If you add or remove items here, update the page too.
+- Use the package logger: `get_logger()` from `camerakit.utils.common`.
+- Initialize per-command/session logging with `setup_logging()`.
+- Avoid configuring or mutating the root logger in feature modules.
 
-- Calibration capture pipeline: record intrinsics/extrinsics clips from the tool.
-- Calibration UX hardening: improve manual annotation flow, window handling, and edge-case messaging.
-- Sync reports + timestamps: per-frame timestamps and drift summaries.
-- Pairwise extrinsics chaining: calibrate with partial target visibility and global pose-graph solve.
-- Hardware-grade sync: LED/GPIO triggering and tighter alignment.
-- Exports & visualizers: TRACX export formats, multi-view previews, pose visualization.
-- Expanded device support: improved USB discovery and future IP camera backends.
+## Documentation Workflow
 
-## Half-implemented or fragile areas
+CameraKit docs are Sphinx-based in `docs/`.
 
-- Manual annotation UX in calibration has TODOs (window close handling, repeat "C" behavior).
-- Extrinsics use a single image/frame per camera; no multi-view chaining yet.
-- Synchronization is best-effort (threaded reads) and lacks timestamps/drift analysis.
-- macOS device discovery is based on `system_profiler` and may be incomplete.
+Build docs locally:
 
-## Guidelines
+```bash
+pip install -r docs/requirements.txt
+make -C docs html
+```
 
-- Keep configuration and output formats TOML-based.
-- Avoid adding heavy dependencies unless required by the roadmap.
-- Update README and the website when CLI behavior changes.
+Open:
+
+- `docs/_build/html/index.html`
+
+When changing user-facing behavior:
+
+- Update `README.md`
+- Update `docs/`
+- Update `RELEASE_NOTES.md`
+
+## Roadmap Boundary
+
+Stable scope today:
+
+- Camera discovery
+- Project initialization
+- Checkerboard-based calibration workflow
+- Synchronized software capture
+- Calibration reporting
+
+Experimental/in-progress scope:
+
+- Third-party calibration conversion paths (Qualisys/Vicon/OpenCap/EasyMocap/bioCV)
+
+Treat experimental paths as roadmap until they are stabilized, versioned, and fully documented.
+
+## Pull Request Checklist
+
+- [ ] Code compiles/runs locally.
+- [ ] Logging behavior is consistent with package logger conventions.
+- [ ] Documentation is updated.
+- [ ] Release notes are updated for user-visible changes.

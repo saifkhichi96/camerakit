@@ -1,39 +1,51 @@
-# CameraKit: CLI Tools and Python API for Camera Calibration and Synchronized Capture
+<p align="center">
+  <img src="docs/_static/camerakit-header.svg" alt="CameraKit" width="100%" />
+</p>
 
-CameraKit is a Python package that provides command-line tools and an API for camera calibration and synchronized capture. It has the following features:
+# CameraKit
 
-- Camera calibration using checkerboard images or video
-- Synchronized capture from multiple cameras (software sync)
+CameraKit is a CLI-first Python package for camera calibration and synchronized capture.
 
-Current release: **v2.0.0** (see RELEASE_NOTES.md)
+Current package version: **v2.0.0**
+
+## Stable Features
+
+- Unified CLI with subcommands: `devices`, `init`, `calibrate`, `capture`, `report`
+- Camera discovery with supported resolution/FPS/codec probing
+- Checkerboard-based calibration (intrinsics + optional extrinsics)
+- Optional fisheye intrinsics/extrinsics path in calibration workflow
+- Calibration TOML outputs with separate per-camera errors:
+  - `intrinsics_error_px`
+  - `extrinsics_error_px`
+- Synchronized software capture with per-trial recordings
+- Calibration summary reporting via CLI
 
 ## Installation
-
-You can install CameraKit using pip:
 
 ```bash
 pip install camerakit
 ```
 
-## Usage
+For capture workflows, use GUI-enabled OpenCV (`opencv-python`).
+`opencv-python-headless` intentionally disables the interactive capture command.
 
-### Command-Line Interface
-
-You can use the command-line interface to perform camera calibration and capture images. Here are some examples:
+## Quickstart
 
 ```bash
-# List available cameras and supported resolutions
+# 1) Create a project
+camerakit init --path /path/to/project --cameras 2
+
+# 2) List devices
 camerakit devices --max-cameras 6
-```
 
-```bash
-# Initialize a calibration project
-camerakit init --path /path/to/project
-```
-
-```bash
-# Run calibration using Config.toml and a calibration folder
+# 3) Run calibration
 camerakit calibrate --config /path/to/project
+
+# 4) Summarize calibration output
+camerakit report --input /path/to/project/calibration/Calib_board_outer.toml
+
+# 5) Record synchronized videos
+camerakit capture --data-dir data --max-cameras 6
 ```
 
 Project layout example:
@@ -44,41 +56,42 @@ project/
   calibration/
     intrinsics/
       cam_00/ intrinsics.mp4
+      cam_01/ intrinsics.mp4
     extrinsics/
       cam_00/ extrinsics.png
+      cam_01/ extrinsics.png
 ```
 
-```bash
-# Record synchronized video from multiple cameras
-camerakit capture --data-dir data --required-fps 60
-```
-
-```bash
-# Summarize calibration results
-camerakit report --input calibration/Calib_board_outer.toml
-```
-
-Calibration outputs include per-camera reprojection errors in the TOML:
-
-```
-[cam_00]
-intrinsics_error_px = 0.42
-extrinsics_error_px = 0.88
-```
-
-### Python API
-You can also use CameraKit as a Python library. Here is an example of how to use it:
+## Python API
 
 ```python
 from camerakit.calibration import run_calibration
+from camerakit.utils import CameraEnumerator
+
 run_calibration("/path/to/project")
+cameras = CameraEnumerator(max_cameras=6).list()
 ```
 
-## Contributing
-Contributions are welcome! See CONTRIBUTING.md for architecture notes and the roadmap. If you find a bug or have a feature request, please open an issue on GitHub. You can also submit a pull request with your changes.
+## Documentation
 
-## Release notes
-See RELEASE_NOTES.md for version history and breaking changes.
+Detailed Sphinx docs are in [`docs/`](docs/). Build locally with:
+
+```bash
+pip install -r docs/requirements.txt
+make -C docs html
+```
+
+Open `docs/_build/html/index.html`.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for architecture notes, logging conventions,
+documentation workflow, and roadmap priorities.
+
+## Release Notes
+
+See [RELEASE_NOTES.md](RELEASE_NOTES.md).
 
 ## License
-CameraKit is licensed under the MIT License. See the [LICENSE](LICENSE) file for more details.
+
+CameraKit is licensed under the MIT License. See [LICENSE](LICENSE).
