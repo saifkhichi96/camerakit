@@ -39,6 +39,14 @@ Generated output:
 Contribution expectations
 -------------------------
 
+- Base all contribution work on ``dev``:
+
+  .. code-block:: bash
+
+     git checkout dev
+     git pull origin dev
+
+- Open pull requests targeting ``dev``.
 - Keep TOML config/output compatibility when possible.
 - Update docs and release notes when CLI behavior changes.
 - Mark experimental features clearly (see roadmap).

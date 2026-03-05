@@ -24,11 +24,21 @@ Core runtime modules:
 
 ## Development Workflow
 
-1. Create a branch.
-2. Make focused changes.
-3. Run local checks.
-4. Update docs/release notes for behavior changes.
-5. Open a pull request.
+After cloning, switch to the `dev` branch first:
+
+```bash
+git checkout dev
+git pull origin dev
+```
+
+All contributions must be based on `dev`, and pull requests should target `dev`.
+
+1. Checkout and update `dev`.
+2. Create your working branch from `dev` (or work directly on `dev` if your workflow requires it).
+3. Make focused changes.
+4. Run local checks.
+5. Update docs/release notes for behavior changes.
+6. Open a pull request targeting `dev`.
 
 Typical local checks:
 
@@ -87,6 +97,7 @@ Treat experimental paths as roadmap until they are stabilized, versioned, and fu
 
 ## Pull Request Checklist
 
+- [ ] Changes are based on `dev` and PR target is `dev`.
 - [ ] Code compiles/runs locally.
 - [ ] Logging behavior is consistent with package logger conventions.
 - [ ] Documentation is updated.
