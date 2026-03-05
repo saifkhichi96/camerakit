@@ -83,6 +83,22 @@ def _setting_key(setting):
     )
 
 
+def _opencv_has_gui_support():
+    """Check whether the installed OpenCV build provides HighGUI support."""
+    try:
+        build_info = cv2.getBuildInformation()
+    except Exception:
+        # If build info cannot be queried, don't block capture preemptively.
+        return True
+
+    for line in build_info.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("GUI:"):
+            backend = stripped.split(":", 1)[1].strip().upper()
+            return backend != "NONE"
+    return True
+
+
 def _common_settings(cameras):
     """Compute settings common to all selected cameras."""
     if not cameras:
@@ -151,6 +167,14 @@ def reencode_video(input_filename, output_filename, target_fps, width, height, c
 def main():
     """Run the interactive synchronized capture workflow."""
     args = parse_args()
+    if not _opencv_has_gui_support():
+        print(
+            "Capture is disabled because the installed OpenCV build has no GUI support "
+            "(likely `opencv-python-headless`). Install `opencv-python` to use "
+            "`camerakit capture`."
+        )
+        return
+
     codec = args.codec
     data_dir = args.data_dir
 
@@ -387,7 +411,7 @@ def main():
                     else:
                         os.rename(raw_filename, final_filename)
                         print(
-                            f"Video for camera {cam_id} kept at original FPS ({cam['fps']:.2f})."
+                            f"Video for camera {cam_id} kept at original FPS ({cam.settings[0].fps:.2f})."
                         )
             elif key == ord("q"):
                 break
