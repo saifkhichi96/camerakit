@@ -17,6 +17,12 @@ INPUTS:
 
 OUTPUTS:
 - a calibration file in the 'calibration' folder (.toml extension)
+
+Third-party notice:
+- Portions of this module are derived from:
+  https://github.com/perfanalytics/pose2sim/blob/main/Pose2Sim/calibration.py
+- Original project license: BSD-3-Clause.
+- See ../../licenses/BSD-3-Clause-pose2sim.txt and ../../THIRD_PARTY_NOTICES.md.
 """
 
 # TODO: DETECT WHEN WINDOW IS CLOSED
