@@ -3,12 +3,14 @@ from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
 import cv2
+cv2.setLogLevel(cv2.LOG_LEVEL_ERROR)  # Suppress OpenCV warnings.
 
 from .common import (
     find_supported_resolutions_and_fps,
     get_camera_hardware_macos,
     get_camera_properties,
     get_logger,
+    get_preferred_capture_backend,
     suppress_stderr,
 )
 
@@ -145,6 +147,7 @@ class CameraEnumerator:
         self.aspect_ratios = aspect_ratios
         self.common_widths = common_widths
         self.codecs = codecs
+        self.backend = get_preferred_capture_backend()
 
     def list(self) -> List[CameraMetadata]:
         """List all available cameras with metadata and supported settings.
@@ -158,7 +161,7 @@ class CameraEnumerator:
 
             if system == "Darwin":  # macOS
                 for cam in get_camera_hardware_macos():
-                    cap = cv2.VideoCapture(cam["id"])
+                    cap = cv2.VideoCapture(cam["id"], self.backend)
                     if not cap.isOpened():
                         get_logger().error(
                             f"Failed to open camera {cam['id']} on macOS."
