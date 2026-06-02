@@ -1,9 +1,12 @@
+import os
+os.environ["OPENCV_LOG_LEVEL"] = "SILENT"  # Suppress OpenCV warnings.
+
 import platform
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
+
 import cv2
-cv2.setLogLevel(cv2.LOG_LEVEL_ERROR)  # Suppress OpenCV warnings.
 
 from .common import (
     find_supported_resolutions_and_fps,
