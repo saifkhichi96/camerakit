@@ -186,6 +186,7 @@ class CameraEnumerator:
                         aspect_ratios=self.aspect_ratios,
                         common_widths=self.common_widths,
                         codecs=self.codecs,
+                        backend=self.backend,
                     )
                     if camera:
                         discovered.append(camera)

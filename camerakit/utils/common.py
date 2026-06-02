@@ -383,6 +383,7 @@ def get_camera_properties(
     aspect_ratios=None,
     common_widths=None,
     codecs=("MJPG", "YUYV", "H264"),
+    backend: int | None = None,
 ) -> Optional[edict]:
     """Open a camera and collect metadata plus supported capture settings.
 
@@ -397,7 +398,7 @@ def get_camera_properties(
         otherwise `None`.
     """
     if isinstance(camera_id, int) or camera_id.isdigit():
-        backend = get_preferred_capture_backend()
+        backend = backend or get_preferred_capture_backend()
         camera = cv2.VideoCapture(int(camera_id), backend)
         if not camera.isOpened():
             get_logger().debug(f"Failed to open camera {camera_id}.")
