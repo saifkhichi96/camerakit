@@ -29,6 +29,23 @@ def parse_args():
         help="Optional: required FPS for recorded video (if different from actual, video will be resampled).",
     )
     parser.add_argument(
+        "--output-profile",
+        choices=["browser", "capture", "archive"],
+        default="browser",
+        help=(
+            "Video output codec preference profile. "
+            "'browser' prioritizes H.264/AVC MP4; "
+            "'capture' prioritizes reliable OpenCV writing; "
+            "'archive' prefers high-fidelity/lossless-compatible formats where available."
+        ),
+    )
+    parser.add_argument(
+        "--output-format",
+        choices=["mp4", "avi", "mkv"],
+        default="mp4",
+        help="Output container format. Default: mp4.",
+    )
+    parser.add_argument(
         "--max-cameras",
         type=int,
         default=5,
@@ -192,7 +209,26 @@ def main():
         )
         return
 
-    output_codecs = ["mp4v", "avc1", "H264"]
+    WRITER_CODEC_PROFILES = {
+        "browser": {
+            "mp4": ["avc1", "H264", "mp4v"],
+            "avi": ["MJPG", "XVID"],
+            "mkv": ["H264", "X264", "MJPG"],
+        },
+        "capture": {
+            "mp4": ["mp4v", "avc1", "H264"],
+            "avi": ["MJPG", "XVID"],
+            "mkv": ["MJPG", "H264", "X264"],
+        },
+        "archive": {
+            "mp4": ["avc1", "H264", "mp4v"],
+            "avi": ["MJPG"],
+            "mkv": ["FFV1", "MJPG", "H264"],
+        },
+    }
+
+    output_ext = args.output_format
+    output_codecs = WRITER_CODEC_PROFILES[args.output_profile][output_ext]
     data_dir = args.data_dir
 
     # Create a directory for this session's recordings.
@@ -352,7 +388,7 @@ def main():
                     fps = cam_settings.fps
                     output_path = os.path.join(
                         session_dir,
-                        f"Trial_{current_session}/{cam_id}_raw.mp4",
+                        f"Trial_{current_session}/{cam_id}_raw.{output_ext}",
                     )
                     os.makedirs(os.path.dirname(output_path), exist_ok=True)
                     writer, found_codec = cv2_VideoWriter(output_path, fps, (width, height), output_codecs)
@@ -378,7 +414,7 @@ def main():
                     current_writers[cam_id].release()
                     raw_files[cam_id] = os.path.join(
                         session_dir,
-                        f"Trial_{current_session}/{cam_id}_raw.mp4",
+                        f"Trial_{current_session}/{cam_id}_raw.{output_ext}",
                     )
 
                 # Give the OS a moment to flush the files.
@@ -402,7 +438,7 @@ def main():
                     width, height = cam.settings[0].width, cam.settings[0].height
                     raw_filename = raw_files[cam_id]
                     final_filename = os.path.join(
-                        session_dir, f"Trial_{current_session}/{cam_id}.mp4"
+                        session_dir, f"Trial_{current_session}/{cam_id}.{output_ext}"
                     )
                     if abs(cam.settings[0].fps - target_fps) > 0.1:
                         success = reencode_video(
