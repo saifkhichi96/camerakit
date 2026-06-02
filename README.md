@@ -6,7 +6,7 @@
 
 CameraKit is a CLI-first Python package for camera calibration and synchronized capture.
 
-Current package version: **v2.0.0**
+Current package version: **v2.0.1**
 
 ## Stable Features
 
