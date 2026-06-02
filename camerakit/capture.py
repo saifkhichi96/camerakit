@@ -29,10 +29,32 @@ def parse_args():
         help="Optional: required FPS for recorded video (if different from actual, video will be resampled).",
     )
     parser.add_argument(
-        "--codec",
-        type=str,
-        default="mp4v",
-        help="Optional: codec to use for recording video (default: mp4v).",
+        "--capture-profile",
+        choices=["balanced", "compressed", "raw"],
+        default="balanced",
+        help=(
+            "Camera input codec preference profile. "
+            "'balanced' tries MJPG then YUYV; "
+            "'compressed' prioritizes MJPG/H264; "
+            "'raw' prefers YUYV."
+        ),
+    )
+    parser.add_argument(
+        "--output-profile",
+        choices=["browser", "capture", "archive"],
+        default="browser",
+        help=(
+            "Video output codec preference profile. "
+            "'browser' prioritizes H.264/AVC MP4; "
+            "'capture' prioritizes reliable OpenCV writing; "
+            "'archive' prefers high-fidelity/lossless-compatible formats where available."
+        ),
+    )
+    parser.add_argument(
+        "--output-format",
+        choices=["mp4", "avi", "mkv"],
+        default="mp4",
+        help="Output container format. Default: mp4.",
     )
     parser.add_argument(
         "--max-cameras",
@@ -122,7 +144,30 @@ def _common_settings(cameras):
     return result
 
 
-def reencode_video(input_filename, output_filename, target_fps, width, height, codec):
+def cv2_VideoWriter(
+    output_path: str,
+    fps: float,
+    frame_size: tuple[int, int],
+    codec_candidates: list[str] | None = None,
+) -> tuple[cv2.VideoWriter, str]:
+    codec_candidates = codec_candidates or ["mp4v", "avc1", "H264", "X264"]
+
+    for codec in codec_candidates:
+        fourcc = cv2.VideoWriter_fourcc(*codec)
+        writer = cv2.VideoWriter(output_path, fourcc, fps, frame_size)
+
+        if writer.isOpened():
+            return writer, codec
+
+        writer.release()
+
+    raise IOError(
+        f"Could not open VideoWriter for {output_path} with codecs: "
+        f"{codec_candidates}"
+    )
+
+
+def reencode_video(input_filename, output_filename, target_fps, width, height, codec_candidates=None):
     """Re-encode a saved video file to a target FPS and codec.
 
     Args:
@@ -131,7 +176,7 @@ def reencode_video(input_filename, output_filename, target_fps, width, height, c
         target_fps: Output frame rate.
         width: Output frame width.
         height: Output frame height.
-        codec: FourCC codec string.
+        codec_candidates: Optional list of codec strings to try for output.
 
     Returns:
         bool: `True` if re-encoding succeeds, else `False`.
@@ -147,10 +192,10 @@ def reencode_video(input_filename, output_filename, target_fps, width, height, c
         print(f"Failed to open input file for re-encoding: {input_filename}")
         return False
 
-    fourcc = cv2.VideoWriter_fourcc(*codec)
-    out = cv2.VideoWriter(output_filename, fourcc, target_fps, (width, height))
-    if not out.isOpened():
-        print(f"Failed to open output file for re-encoding: {output_filename}")
+    try:
+        out, _ = cv2_VideoWriter(output_filename, target_fps, (width, height), codec_candidates)
+    except IOError as e:
+        print(f"Failed to re-encode captured video: {e}")
         cap.release()
         return False
 
@@ -175,7 +220,33 @@ def main():
         )
         return
 
-    codec = args.codec
+    CAPTURE_CODEC_PROFILES = {
+        "balanced": ["MJPG", "YUYV", "H264"],
+        "compressed": ["H264", "MJPG", "YUYV"],
+        "raw": ["YUYV", "MJPG"],
+    }
+
+    WRITER_CODEC_PROFILES = {
+        "browser": {
+            "mp4": ["avc1", "H264", "mp4v"],
+            "avi": ["MJPG", "XVID"],
+            "mkv": ["H264", "X264", "MJPG"],
+        },
+        "capture": {
+            "mp4": ["mp4v", "avc1", "H264"],
+            "avi": ["MJPG", "XVID"],
+            "mkv": ["MJPG", "H264", "X264"],
+        },
+        "archive": {
+            "mp4": ["avc1", "H264", "mp4v"],
+            "avi": ["MJPG"],
+            "mkv": ["FFV1", "MJPG", "H264"],
+        },
+    }
+
+    input_codecs = CAPTURE_CODEC_PROFILES[args.capture_profile]
+    output_ext = args.output_format
+    output_codecs = WRITER_CODEC_PROFILES[args.output_profile][output_ext]
     data_dir = args.data_dir
 
     # Create a directory for this session's recordings.
@@ -189,7 +260,7 @@ def main():
     # Discover available cameras.
     print("---------------------------------------------------------------------")
     print("Discovering connected cameras...")
-    cameras = CameraEnumerator(max_cameras=args.max_cameras).list_synchronizable()
+    cameras = CameraEnumerator(max_cameras=args.max_cameras, codecs=input_codecs).list_synchronizable()
     if not cameras:
         print("No cameras found. Exiting.")
         return
@@ -242,7 +313,8 @@ def main():
     cam_ids = [cam.id for cam in selected_cams]
 
     # Create the synchronized capture.
-    sync = SynchronizedVideoCapture(selected_cams)
+    logger.info("Initializing synchronized video capture with {} codec...".format(selected_setting.codec))
+    sync = SynchronizedVideoCapture(selected_cams, codec=selected_setting.codec)
 
     logger.info("---------------------------------------------------------------------")
     logger.info("Starting video capture session.")
@@ -333,18 +405,15 @@ def main():
                     width = cam_settings.width
                     height = cam_settings.height
                     fps = cam_settings.fps
-                    codec = cam_settings.codec
                     output_path = os.path.join(
                         session_dir,
-                        f"Trial_{current_session}/{cam_id}_raw.mp4",
+                        f"Trial_{current_session}/{cam_id}_raw.{output_ext}",
                     )
                     os.makedirs(os.path.dirname(output_path), exist_ok=True)
-                    fourcc = cv2.VideoWriter_fourcc(*codec)
-                    writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
-                    if not writer.isOpened():
-                        raise IOError(
-                            f"Failed to open video writer for camera {cam_id}."
-                        )
+                    writer, found_codec = cv2_VideoWriter(output_path, fps, (width, height), output_codecs)
+                    logger.debug(
+                        f"Camera {cam_id}: Opened VideoWriter with codec '{found_codec}' for raw recording."
+                    )
                     current_writers[cam_id] = writer
                 print(f"Started recording session {current_session}.")
             elif key == ord("s") and recording:
@@ -364,7 +433,7 @@ def main():
                     current_writers[cam_id].release()
                     raw_files[cam_id] = os.path.join(
                         session_dir,
-                        f"Trial_{current_session}/{cam_id}_raw.mp4",
+                        f"Trial_{current_session}/{cam_id}_raw.{output_ext}",
                     )
 
                 # Give the OS a moment to flush the files.
@@ -388,7 +457,7 @@ def main():
                     width, height = cam.settings[0].width, cam.settings[0].height
                     raw_filename = raw_files[cam_id]
                     final_filename = os.path.join(
-                        session_dir, f"Trial_{current_session}/{cam_id}.mp4"
+                        session_dir, f"Trial_{current_session}/{cam_id}.{output_ext}"
                     )
                     if abs(cam.settings[0].fps - target_fps) > 0.1:
                         success = reencode_video(
@@ -397,7 +466,7 @@ def main():
                             target_fps,
                             width,
                             height,
-                            codec,
+                            output_codecs
                         )
                         if success:
                             os.remove(raw_filename)

@@ -6,7 +6,7 @@ sys.path.insert(0, os.path.abspath(".."))
 project = "CameraKit"
 author = "Saif Khan"
 copyright = "2026, Saif Khan"
-release = "2.0.0"
+release = "2.0.1"
 
 extensions = [
     "sphinx.ext.napoleon",
