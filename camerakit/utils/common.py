@@ -193,6 +193,22 @@ def find_supported_resolutions_and_fps(
     return available
 
 
+def get_preferred_capture_backend() -> int:
+    system = platform.system()
+
+    if system == "Windows":
+        # Alternative: cv2.CAP_MSMF, but DSHOW is often better for manual camera props.
+        return cv2.CAP_DSHOW
+
+    if system == "Darwin":
+        return cv2.CAP_AVFOUNDATION
+
+    if system == "Linux":
+        return cv2.CAP_V4L2
+
+    return cv2.CAP_ANY
+
+
 def get_camera_hardware_linux(cam_id):
     """Read Linux camera hardware details via `udevadm`.
 
@@ -313,8 +329,9 @@ def get_camera_hardware_macos():
     # Verify which cameras OpenCV can actually access
     mapped_cameras = []
     index = 0
+    backend = get_preferred_capture_backend()
     for cam in cameras:
-        cap = cv2.VideoCapture(index)
+        cap = cv2.VideoCapture(index, backend)
         if cap.isOpened():
             cam["id"] = index  # Assign OpenCV-compatible index
             cam["manufacturer"] = cam.get("manufacturer", "Unknown")
@@ -380,7 +397,8 @@ def get_camera_properties(
         otherwise `None`.
     """
     if isinstance(camera_id, int) or camera_id.isdigit():
-        camera = cv2.VideoCapture(int(camera_id))
+        backend = get_preferred_capture_backend()
+        camera = cv2.VideoCapture(int(camera_id), backend)
         if not camera.isOpened():
             get_logger().debug(f"Failed to open camera {camera_id}.")
             return None
