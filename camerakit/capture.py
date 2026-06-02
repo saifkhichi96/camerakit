@@ -29,12 +29,6 @@ def parse_args():
         help="Optional: required FPS for recorded video (if different from actual, video will be resampled).",
     )
     parser.add_argument(
-        "--codec",
-        type=str,
-        default="mp4v",
-        help="Optional: codec to use for recording video (default: mp4v).",
-    )
-    parser.add_argument(
         "--max-cameras",
         type=int,
         default=5,
@@ -122,7 +116,30 @@ def _common_settings(cameras):
     return result
 
 
-def reencode_video(input_filename, output_filename, target_fps, width, height, codec):
+def cv2_VideoWriter(
+    output_path: str,
+    fps: float,
+    frame_size: tuple[int, int],
+    codec_candidates: list[str] | None = None,
+) -> tuple[cv2.VideoWriter, str]:
+    codec_candidates = codec_candidates or ["mp4v", "avc1", "H264", "X264"]
+
+    for codec in codec_candidates:
+        fourcc = cv2.VideoWriter_fourcc(*codec)
+        writer = cv2.VideoWriter(output_path, fourcc, fps, frame_size)
+
+        if writer.isOpened():
+            return writer, codec
+
+        writer.release()
+
+    raise IOError(
+        f"Could not open VideoWriter for {output_path} with codecs: "
+        f"{codec_candidates}"
+    )
+
+
+def reencode_video(input_filename, output_filename, target_fps, width, height, codec_candidates=None):
     """Re-encode a saved video file to a target FPS and codec.
 
     Args:
@@ -131,7 +148,7 @@ def reencode_video(input_filename, output_filename, target_fps, width, height, c
         target_fps: Output frame rate.
         width: Output frame width.
         height: Output frame height.
-        codec: FourCC codec string.
+        codec_candidates: Optional list of codec strings to try for output.
 
     Returns:
         bool: `True` if re-encoding succeeds, else `False`.
@@ -147,10 +164,10 @@ def reencode_video(input_filename, output_filename, target_fps, width, height, c
         print(f"Failed to open input file for re-encoding: {input_filename}")
         return False
 
-    fourcc = cv2.VideoWriter_fourcc(*codec)
-    out = cv2.VideoWriter(output_filename, fourcc, target_fps, (width, height))
-    if not out.isOpened():
-        print(f"Failed to open output file for re-encoding: {output_filename}")
+    try:
+        out, _ = cv2_VideoWriter(output_filename, target_fps, (width, height), codec_candidates)
+    except IOError as e:
+        print(f"Failed to re-encode captured video: {e}")
         cap.release()
         return False
 
@@ -175,7 +192,7 @@ def main():
         )
         return
 
-    codec = args.codec
+    output_codecs = ["mp4v", "avc1", "H264"]
     data_dir = args.data_dir
 
     # Create a directory for this session's recordings.
@@ -333,18 +350,15 @@ def main():
                     width = cam_settings.width
                     height = cam_settings.height
                     fps = cam_settings.fps
-                    codec = cam_settings.codec
                     output_path = os.path.join(
                         session_dir,
                         f"Trial_{current_session}/{cam_id}_raw.mp4",
                     )
                     os.makedirs(os.path.dirname(output_path), exist_ok=True)
-                    fourcc = cv2.VideoWriter_fourcc(*codec)
-                    writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
-                    if not writer.isOpened():
-                        raise IOError(
-                            f"Failed to open video writer for camera {cam_id}."
-                        )
+                    writer, found_codec = cv2_VideoWriter(output_path, fps, (width, height), output_codecs)
+                    logger.debug(
+                        f"Camera {cam_id}: Opened VideoWriter with codec '{found_codec}' for raw recording."
+                    )
                     current_writers[cam_id] = writer
                 print(f"Started recording session {current_session}.")
             elif key == ord("s") and recording:
@@ -397,7 +411,7 @@ def main():
                             target_fps,
                             width,
                             height,
-                            codec,
+                            output_codecs
                         )
                         if success:
                             os.remove(raw_filename)
