@@ -15,12 +15,17 @@ class SynchronizedVideoCapture:
     Captures frames from multiple cameras and provides synchronized frame reading.
     """
 
-    def __init__(self, cameras: List[CameraMetadata]):
+    def __init__(
+        self,
+        cameras: List[CameraMetadata],
+        codec: str = "MJPG",
+    ):
         """
         Initialize the camera streams and synchronization setup.
 
         Args:
             cameras (List[CameraMetadata]): Camera metadata and selected settings.
+            codec (str): Video codec for capturing frames.
         """
         camera_ids = [camera.id for camera in cameras]
         self.camera_ids = camera_ids
@@ -30,6 +35,10 @@ class SynchronizedVideoCapture:
         for idx, cam in enumerate(self.cameras):
             if not cam.isOpened():
                 raise ValueError(f"Failed to open camera {camera_ids[idx]}")
+
+            # Set camera codec
+            fourcc = cv2.VideoWriter_fourcc(*codec)
+            cam.set(cv2.CAP_PROP_FOURCC, fourcc)
 
             # Set camera resolutions
             cam.set(cv2.CAP_PROP_FRAME_WIDTH, cameras[idx].width)

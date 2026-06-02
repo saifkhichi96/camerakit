@@ -29,6 +29,17 @@ def parse_args():
         help="Optional: required FPS for recorded video (if different from actual, video will be resampled).",
     )
     parser.add_argument(
+        "--capture-profile",
+        choices=["balanced", "compressed", "raw"],
+        default="balanced",
+        help=(
+            "Camera input codec preference profile. "
+            "'balanced' tries MJPG then YUYV; "
+            "'compressed' prioritizes MJPG/H264; "
+            "'raw' prefers YUYV."
+        ),
+    )
+    parser.add_argument(
         "--output-profile",
         choices=["browser", "capture", "archive"],
         default="browser",
@@ -209,6 +220,12 @@ def main():
         )
         return
 
+    CAPTURE_CODEC_PROFILES = {
+        "balanced": ["MJPG", "YUYV", "H264"],
+        "compressed": ["H264", "MJPG", "YUYV"],
+        "raw": ["YUYV", "MJPG"],
+    }
+
     WRITER_CODEC_PROFILES = {
         "browser": {
             "mp4": ["avc1", "H264", "mp4v"],
@@ -227,6 +244,7 @@ def main():
         },
     }
 
+    input_codecs = CAPTURE_CODEC_PROFILES[args.capture_profile]
     output_ext = args.output_format
     output_codecs = WRITER_CODEC_PROFILES[args.output_profile][output_ext]
     data_dir = args.data_dir
@@ -242,7 +260,7 @@ def main():
     # Discover available cameras.
     print("---------------------------------------------------------------------")
     print("Discovering connected cameras...")
-    cameras = CameraEnumerator(max_cameras=args.max_cameras).list_synchronizable()
+    cameras = CameraEnumerator(max_cameras=args.max_cameras, codecs=input_codecs).list_synchronizable()
     if not cameras:
         print("No cameras found. Exiting.")
         return
@@ -295,7 +313,8 @@ def main():
     cam_ids = [cam.id for cam in selected_cams]
 
     # Create the synchronized capture.
-    sync = SynchronizedVideoCapture(selected_cams)
+    logger.info("Initializing synchronized video capture with {} codec...".format(selected_setting.codec))
+    sync = SynchronizedVideoCapture(selected_cams, codec=selected_setting.codec)
 
     logger.info("---------------------------------------------------------------------")
     logger.info("Starting video capture session.")
